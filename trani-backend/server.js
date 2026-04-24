@@ -19,12 +19,6 @@ const pool = new Pool({
     : false
 });
 
-pool.connect()
-  .then(() => console.log('✓ Database connesso'))
-  .catch(err => {
-    console.error('✗ Errore connessione database:', err.message);
-    process.exit(1);
-  });
 
 /* ═══════════════════════════════════════════════════════
    MIDDLEWARE
@@ -37,8 +31,6 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '16kb' }));
 
-// Serve frontend statically if public/ folder is present
-app.use(express.static(path.join(__dirname, 'public')));
 
 /* ═══════════════════════════════════════════════════════
    CONSTANTS
@@ -150,8 +142,8 @@ app.post('/api/ideas', async (req, res) => {
 /* ═══════════════════════════════════════════════════════
    ADMIN — autenticazione semplice via header
    ═══════════════════════════════════════════════════════ */
-const ADMIN_USER = process.env.ADMIN_USER || 'ditto';
-const ADMIN_PASS = process.env.ADMIN_PASS || 'matti0561';
+const ADMIN_USER = process.env.ADMIN_USER;
+const ADMIN_PASS = process.env.ADMIN_PASS;
 
 function adminAuth(req, res, next) {
   const auth = req.headers['x-admin-auth'] || '';
@@ -201,8 +193,12 @@ app.delete('/api/admin/ideas/:id', adminAuth, async (req, res) => {
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 /* ═══════════════════════════════════════════════════════
-   START
+   START — local dev only (Vercel imports this as a module)
    ═══════════════════════════════════════════════════════ */
-app.listen(PORT, () => {
-  console.log(`✓ Server avviato → http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`✓ Server avviato → http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
