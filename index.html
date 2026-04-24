@@ -1,0 +1,1698 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trani — Visioni di Città</title>
+<link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet"/>
+<script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --white:        #fdfdfc;
+  --gold:         #c6ad81;
+  --ink:          #080808;
+  --ease:         cubic-bezier(.16, 1, .3, 1);
+
+  /* Solid / Elegant tokens */
+  --g-bg:         rgba(16, 14, 12, .85);
+  --g-bg-hover:   rgba(25, 22, 20, .95);
+  --g-bg-active:  rgba(201, 169, 110, .10);
+  --g-border:     rgba(255, 255, 255, .15);
+  --g-border-hi:  rgba(255, 255, 255, .35);
+  --g-blur:       blur(16px) saturate(180%);
+  --g-shadow:     0 4px 20px rgba(0,0,0,.4);
+  --g-shadow-lg:  0 12px 36px rgba(0,0,0,.5);
+}
+
+html, body { width:100%; height:100%; overflow:hidden; background:var(--ink); font-family:'Inter',system-ui,sans-serif; cursor:none; }
+
+/* ── Custom cursor ───────────────────────────────────── */
+#cur {
+  position:fixed; width:6px; height:6px; border-radius:50%;
+  background:var(--white); pointer-events:none; z-index:9999;
+  transform:translate(-50%,-50%);
+  transition:width .2s, height .2s, background .2s, transform .2s cubic-bezier(.16,1,.3,1);
+}
+#cur-ring { display:none !important; }
+body.hov #cur { width:10px; height:10px; background:var(--gold); }
+
+/* ── Map ─────────────────────────────────────────────── */
+#map { position:fixed; inset:0; z-index:0; }
+.maplibregl-ctrl-attrib, .maplibregl-ctrl-logo { display:none !important; }
+
+/* ── Overlays ────────────────────────────────────────── */
+#vig { position:fixed; inset:0; z-index:1; background:radial-gradient(ellipse at center, transparent 20%, rgba(16,14,11,.62) 100%); pointer-events:none; }
+#top-fade { position:fixed; top:0; left:0; right:0; height:150px; z-index:2; background:linear-gradient(to bottom, rgba(16,14,11,.78) 0%, transparent 100%); pointer-events:none; }
+#bot-fade { position:fixed; bottom:0; left:0; right:0; height:240px; z-index:2; background:linear-gradient(to top, rgba(16,14,11,.88) 0%, transparent 100%); pointer-events:none; }
+
+/* ── Header ──────────────────────────────────────────── */
+#hdr { position:fixed; top:0; left:0; right:0; z-index:10; display:flex; justify-content:space-between; align-items:flex-start; padding:32px 48px 0; }
+.h-title { font-size:11px; font-weight:600; letter-spacing:.25em; text-transform:uppercase; color:var(--white); opacity:.85; }
+.h-sub   { font-family:'Playfair Display',Georgia,serif; font-style:italic; font-size:11px; letter-spacing:.06em; color:var(--gold); opacity:.8; margin-top:4px; }
+
+/* ── Ideas view button (header destra) ── */
+#ideas-view-btn {
+  background:var(--g-bg); border:1px solid var(--g-border);
+  border-radius:6px; padding:9px 20px;
+  color:var(--white); font-family:'Inter',system-ui,sans-serif;
+  font-size:10px; font-weight:500; letter-spacing:.14em; text-transform:uppercase;
+  cursor:none; backdrop-filter:var(--g-blur); -webkit-backdrop-filter:var(--g-blur);
+  box-shadow:var(--g-shadow); white-space:nowrap;
+  transition:all .3s var(--ease);
+}
+#ideas-view-btn:hover {
+  background:var(--g-bg-hover); border-color:var(--gold); color:#fff;
+  box-shadow:0 6px 18px rgba(0,0,0,.4);
+}
+
+/* ── Zone selector — due livelli ─────────────────────── */
+#zone-wrap {
+  position:fixed; bottom:42px; left:50%; transform:translateX(-50%);
+  z-index:20;
+  display:flex; flex-direction:column; align-items:center; gap:0;
+  padding:8px;
+  background:var(--g-bg);
+  backdrop-filter:var(--g-blur); -webkit-backdrop-filter:var(--g-blur);
+  border:1px solid var(--g-border); border-radius:10px;
+  box-shadow:var(--g-shadow);
+  max-width:calc(100vw - 48px);
+  overflow:hidden;
+}
+
+/* ── Livello 1: categorie ────── */
+#cat-bar { display:flex; gap:4px; }
+
+.cat-tab {
+  padding:10px 24px; border-radius:6px; flex-shrink:0;
+  font-size:10px; font-weight:500; letter-spacing:.15em; text-transform:uppercase;
+  color:rgba(255,255,255,.50);
+  border:1px solid transparent; white-space:nowrap; user-select:none;
+  transition:all .3s var(--ease);
+}
+.cat-tab:hover {
+  background:var(--g-bg-hover); border-color:var(--g-border-hi); color:#fff;
+}
+.cat-tab.active {
+  background:var(--g-bg-active);
+  border-color:var(--gold);
+  color:var(--gold);
+}
+
+/* ── Separatore ─────────────── */
+#sub-sep {
+  width:calc(100% + 0px); height:1px;
+  background:var(--g-border);
+  margin:0 -8px;
+  opacity:0; max-height:0;
+  transition:opacity .3s, max-height .3s;
+}
+#sub-sep.show { opacity:1; max-height:1px; margin:6px -8px; }
+
+/* ── Livello 2: sottocategorie ─ */
+#sub-bar {
+  display:flex; gap:4px;
+  max-height:0; overflow:hidden; opacity:0;
+  transition:max-height .42s var(--ease), opacity .32s;
+}
+#sub-bar.open { max-height:56px; opacity:1; }
+
+.sub-tab {
+  padding:7px 18px; border-radius:6px; flex-shrink:0;
+  font-size:11px; font-weight:400; letter-spacing:.05em;
+  color:rgba(255,255,255,.65);
+  border:1px solid transparent; white-space:nowrap; user-select:none;
+  transition:all .3s var(--ease);
+}
+.sub-tab:hover {
+  background:var(--g-bg-hover); border-color:var(--g-border-hi); color:#fff;
+}
+.sub-tab.active {
+  background:var(--g-border-hi); border-color:var(--white); color:#fff;
+}
+
+#zone-hint {
+  position:fixed; bottom:114px; left:50%; transform:translateX(-50%);
+  z-index:20; font-style:italic; font-size:12px; letter-spacing:.14em;
+  color:var(--white); opacity:.28; white-space:nowrap;
+  pointer-events:none; transition:opacity .4s;
+}
+
+/* ── Side panels (shared) ────────────────────────────── */
+.side-panel {
+  position:fixed; top:0; bottom:0;
+  z-index:30;
+  display:flex; flex-direction:column;
+  padding:52px 36px 36px;
+  overflow-y:auto; scrollbar-width:none;
+  background:rgba(10,8,6,.70);
+  backdrop-filter:var(--g-blur); -webkit-backdrop-filter:var(--g-blur);
+  box-shadow:var(--g-shadow-lg);
+  transition:transform .42s var(--ease), opacity .42s;
+}
+.side-panel::-webkit-scrollbar { display:none; }
+
+.p-close {
+  position:absolute; top:20px; right:22px;
+  background:none; border:none;
+  color:rgba(255,255,255,.38); font-size:18px;
+  cursor:none; transition:color .2s;
+}
+.p-close:hover { color:rgba(255,255,255,.9); }
+
+/* ── Left panel — Ideas ──────────────────────────────── */
+#panel-ideas {
+  left:0; width:min(420px, 92vw);
+  border-right:1px solid var(--g-border);
+  border-radius:0 24px 24px 0;
+  transform:translateX(-100%); opacity:0;
+}
+#panel-ideas.open { transform:translateX(0); opacity:1; }
+
+.pi-title { font-family:'Playfair Display',Georgia,serif; font-weight:400; font-size:26px; color:var(--white); margin-bottom:22px; line-height:1.2; }
+.pi-div   { width:30px; height:1px; background:var(--gold); opacity:.35; margin-bottom:20px; }
+.pi-instr { font-size:13px; font-weight:300; line-height:1.75; color:var(--white); opacity:.42; margin-bottom:18px; }
+
+/* Ideas list */
+#pi-ideas { margin-bottom:18px; }
+.ideas-hd   { font-size:9px; letter-spacing:.22em; text-transform:uppercase; color:var(--gold); opacity:.55; margin-bottom:12px; }
+.idea-item  { padding:10px 0; border-bottom:1px solid rgba(255,255,255,.07); }
+.idea-item:last-child { border-bottom:none; }
+.idea-name  { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); opacity:.7; margin-bottom:3px; }
+.idea-body  { font-family:'Playfair Display',Georgia,serif; font-size:13px; font-style:italic; color:var(--white); opacity:.5; line-height:1.65; }
+
+/* Form */
+.ifield {
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:6px; padding:12px 15px;
+  color:var(--white); font-family:'Inter',system-ui,sans-serif;
+  font-size:13px; resize:none; width:100%; margin-bottom:10px;
+  transition:border-color .3s, background .3s;
+}
+.ifield::placeholder { color:rgba(255,255,255,.28); font-style:italic; }
+.ifield:focus { outline:none; border-color:rgba(255,255,255,.40); background:rgba(255,255,255,.08); }
+#pi-text { height:96px; }
+
+.street-label { display:block; font-size:9px; letter-spacing:.2em; text-transform:uppercase; color:var(--gold); opacity:.65; margin-bottom:6px; }
+
+#pi-submit {
+  width:100%; padding:14px; margin-top:6px;
+  background:var(--white); border:1px solid var(--white);
+  border-radius:6px; color:var(--ink);
+  font-family:'Inter',system-ui,sans-serif; font-size:10px; font-weight:600;
+  letter-spacing:.15em; text-transform:uppercase; cursor:none;
+  transition:background .3s, color .3s, opacity .3s;
+}
+#pi-submit:hover {
+  background:transparent; color:var(--white);
+}
+#pi-submit:disabled { opacity:.45; }
+
+#pi-ok { display:none; flex-direction:column; align-items:center; justify-content:center; flex:1; text-align:center; padding:40px 0; }
+#pi-ok .star { font-size:32px; color:var(--gold); margin-bottom:16px; }
+#pi-ok p { font-family:'Playfair Display',Georgia,serif; font-size:17px; font-style:italic; color:var(--white); opacity:.62; line-height:1.7; }
+
+/* ── Right panel — Street info ───────────────────────── */
+#panel-street {
+  right:0; width:min(360px, 92vw);
+  border-left:1px solid var(--g-border);
+  border-radius:24px 0 0 24px;
+  transform:translateX(100%); opacity:0;
+  padding:52px 30px 30px;
+}
+#panel-street.open { transform:translateX(0); opacity:1; }
+
+#ps-photo { width:100%; height:175px; object-fit:cover; border-radius:14px; margin-bottom:18px; display:none; }
+.ps-badge { display:inline-block; padding:4px 11px; border-radius:8px; font-size:9px; letter-spacing:.2em; text-transform:uppercase; background:var(--g-bg); border:1px solid var(--g-border); color:var(--gold); margin-bottom:10px; }
+#ps-name    { font-family:'Playfair Display',Georgia,serif; font-weight:400; font-size:20px; color:var(--white); margin-bottom:6px; line-height:1.3; }
+#ps-address { font-style:italic; font-size:12px; letter-spacing:.06em; color:var(--white); opacity:.42; margin-bottom:14px; line-height:1.6; }
+.ps-div     { width:26px; height:1px; background:var(--gold); opacity:.32; margin-bottom:14px; }
+#ps-hood    { font-size:13px; color:var(--white); opacity:.48; margin-bottom:6px; }
+#ps-type    { font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--gold); opacity:.5; margin-bottom:22px; }
+#ps-link {
+  display:block; width:100%; padding:12px; text-align:center;
+  background:transparent; border:1px solid rgba(255,255,255,.24);
+  border-radius:6px; font-size:10px; font-weight:500; letter-spacing:.15em; text-transform:uppercase;
+  color:var(--white); text-decoration:none;
+  transition:background .3s, border-color .3s;
+}
+#ps-link:hover { background:var(--white); border-color:var(--white); color:var(--ink); }
+
+/* ── Nominatim autocomplete dropdown ─────────────────── */
+.nom-dropdown {
+  position:fixed;
+  background:rgba(10,8,6,.96);
+  backdrop-filter:blur(24px) saturate(180%);
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:14px;
+  box-shadow:0 12px 40px rgba(0,0,0,.55);
+  font-family:'Inter',system-ui,sans-serif;
+  overflow:hidden; z-index:9997;
+}
+.nom-item {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:10px 16px; gap:12px;
+  border-top:1px solid rgba(255,255,255,.07); cursor:pointer;
+  transition:background .15s;
+}
+.nom-item:first-child { border-top:none; }
+.nom-item:hover { background:rgba(255,255,255,.10); }
+.nom-main { font-size:14px; color:rgba(255,255,255,.82); }
+.nom-sub  { font-size:11px; color:rgba(255,255,255,.35); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:130px; }
+
+/* ── Loader ──────────────────────────────────────────── */
+#load { position:fixed; inset:0; z-index:200; background:var(--ink); display:flex; flex-direction:column; align-items:center; justify-content:center; transition:opacity .8s; }
+#load.gone { opacity:0; pointer-events:none; }
+.l-city { font-family:'Playfair Display',Georgia,serif; font-weight:400; font-size:clamp(44px,8vw,90px); letter-spacing:.02em; color:var(--white); opacity:0.9; }
+.l-sub  { font-family:'Playfair Display',Georgia,serif; font-style:italic; font-size:13px; letter-spacing:.14em; color:var(--gold); opacity:.7; margin-top:4px; margin-bottom:44px; }
+.l-bar-wrap { width:180px; height:1px; background:rgba(255,255,255,.1); }
+.l-bar      { height:100%; background:var(--gold); width:0; transition:width 1.2s ease; }
+
+/* ── Ideas section (overlay fullscreen) ─────────────── */
+#ideas-section {
+  position:fixed; inset:0; z-index:50;
+  background:rgba(10,8,6,.94);
+  backdrop-filter:var(--g-blur); -webkit-backdrop-filter:var(--g-blur);
+  display:flex; flex-direction:column;
+  transform:translateY(100%);
+  transition:transform .52s var(--ease);
+}
+#ideas-section.open { transform:translateY(0); }
+
+#is-header {
+  display:flex; align-items:center; gap:20px;
+  padding:40px 48px 24px;
+  border-bottom:1px solid var(--g-border);
+  flex-shrink:0;
+}
+#is-back {
+  background:none; border:none; color:rgba(255,255,255,.45);
+  font-size:20px; cursor:none; padding:0; line-height:1;
+  transition:color .2s;
+}
+#is-back:hover { color:#fff; }
+#is-header h2 {
+  font-family:'Playfair Display',Georgia,serif;
+  font-weight:400; font-size:clamp(22px,3vw,32px);
+  color:var(--white); flex:1; letter-spacing:.02em;
+}
+#is-total {
+  font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--gold); opacity:.7;
+}
+
+/* Filtri */
+#is-filters {
+  display:flex; gap:6px; align-items:center;
+  padding:20px 48px;
+  border-bottom:1px solid var(--g-border);
+  flex-shrink:0; overflow-x:auto; scrollbar-width:none;
+}
+#is-filters::-webkit-scrollbar { display:none; }
+.is-filter {
+  padding:7px 18px; border-radius:6px; flex-shrink:0;
+  font-size:10px; font-weight:500; letter-spacing:.12em; text-transform:uppercase;
+  color:rgba(255,255,255,.55);
+  border:1px solid transparent; white-space:nowrap; user-select:none;
+  transition:background .25s, color .2s, border-color .2s;
+}
+.is-filter:hover { background:var(--g-bg-hover); border-color:var(--g-border); color:#fff; }
+.is-filter.active {
+  background:var(--g-bg-active); border-color:var(--gold); color:var(--gold);
+}
+
+/* Griglia idee */
+#is-body { flex:1; overflow-y:auto; padding:28px 48px 48px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.1) transparent; }
+#is-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(260px,1fr));
+  gap:14px;
+}
+
+.idea-card {
+  background:var(--g-bg); border:1px solid var(--g-border);
+  border-radius:8px; padding:24px;
+  display:flex; flex-direction:column; gap:12px;
+  transition:background .25s, border-color .25s;
+}
+.idea-card:hover { background:var(--g-bg-hover); border-color:rgba(255,255,255,.2); }
+.ic-tags { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.ic-cat  { font-size:9px; letter-spacing:.18em; text-transform:uppercase; color:var(--gold); opacity:.7; }
+.ic-dot  { width:3px; height:3px; border-radius:50%; background:rgba(255,255,255,.2); }
+.ic-zone { font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:rgba(255,255,255,.45); }
+.ic-street { font-size:11px; color:rgba(255,255,255,.38); letter-spacing:.04em; }
+.ic-text {
+  font-family:'Playfair Display',Georgia,serif;
+  font-style:italic; font-size:14px; color:var(--white); opacity:.78;
+  line-height:1.65;
+  display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;
+}
+.ic-meta { display:flex; justify-content:space-between; align-items:center; margin-top:2px; }
+.ic-author { font-size:11px; font-weight:500; color:var(--white); opacity:.5; letter-spacing:.04em; }
+.ic-date   { font-size:10px; color:rgba(255,255,255,.28); letter-spacing:.04em; }
+
+/* Empty state */
+#is-empty {
+  display:none; flex-direction:column; align-items:center;
+  justify-content:center; height:100%;
+  gap:14px; text-align:center; padding:40px;
+}
+#is-empty .is-empty-icon { font-size:40px; color:var(--gold); opacity:.4; }
+#is-empty p {
+  font-family:'Playfair Display',Georgia,serif; font-style:italic;
+  font-size:16px; color:var(--white); opacity:.35; line-height:1.7;
+}
+
+/* ── Type selector ──────────────────────────────────── */
+#pi-type-row { display:flex; gap:8px; margin-bottom:10px; }
+.type-btn {
+  flex:1; padding:9px 12px; border-radius:6px;
+  font-size:10px; font-weight:500; letter-spacing:.1em; text-transform:uppercase;
+  color:rgba(255,255,255,.50); background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.12);
+  cursor:none; transition:background .25s, color .2s, border-color .2s;
+}
+.type-btn:hover { background:var(--g-bg-hover); border-color:var(--g-border-hi); color:#fff; }
+.type-btn.sel-idea { background:rgba(198,173,129,.10); border-color:var(--gold); color:var(--gold); box-shadow:none; }
+.type-btn.sel-seg  { background:rgba(255,140,60,.08); border-color:rgba(255,140,60,.6); color:rgba(255,140,60,.9); box-shadow:none; }
+
+/* ── Photo upload ────────────────────────────────────── */
+#pi-photo-label {
+  display:flex; align-items:center; gap:10px;
+  background:rgba(255,255,255,.05); border:1px dashed rgba(255,255,255,.18);
+  border-radius:12px; padding:12px 15px; margin-bottom:10px;
+  color:rgba(255,255,255,.40); font-size:13px; cursor:pointer;
+  transition:border-color .3s, background .3s, color .3s;
+}
+#pi-photo-label:hover { background:rgba(255,255,255,.09); border-color:rgba(255,255,255,.36); color:rgba(255,255,255,.72); }
+#pi-photo-input { display:none; }
+#pi-photo-preview {
+  width:100%; border-radius:10px; margin-bottom:10px;
+  display:none; max-height:160px; object-fit:cover;
+  border:1px solid rgba(255,255,255,.12);
+}
+
+/* ── Elezioni button ─────────────────────────────────── */
+#elezioni-btn {
+  background:var(--g-bg); border:1px solid rgba(198,173,129,.45);
+  border-radius:6px; padding:9px 20px;
+  color:var(--gold); font-family:'Inter',system-ui,sans-serif;
+  font-size:10px; font-weight:500; letter-spacing:.14em; text-transform:uppercase;
+  cursor:none; backdrop-filter:var(--g-blur); -webkit-backdrop-filter:var(--g-blur);
+  box-shadow:var(--g-shadow); white-space:nowrap;
+  transition:all .3s var(--ease);
+}
+#elezioni-btn:hover {
+  background:var(--g-bg-hover); border-color:var(--gold); color:#fff;
+  box-shadow:0 6px 18px rgba(0,0,0,.4);
+}
+
+/* ── Elezioni locandina floating panel ───────────────── */
+#elezioni-panel {
+  position:fixed; right:40px; top:70px;
+  z-index:60; width:220px;
+  background:rgba(16,14,12,.62);
+  backdrop-filter:blur(28px) saturate(200%);
+  -webkit-backdrop-filter:blur(28px) saturate(200%);
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:22px; padding:16px;
+  display:flex; flex-direction:column; align-items:center; gap:14px;
+  box-shadow:0 24px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08);
+  transform:translateY(calc(-100% - 80px));
+  opacity:0; pointer-events:none;
+  transition:transform .52s var(--ease), opacity .42s;
+}
+#elezioni-panel.open { transform:translateY(0); opacity:1; pointer-events:auto; }
+#elezioni-panel > img { width:100%; border-radius:14px; display:block; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+.ep-link {
+  display:block; width:100%; padding:11px; text-align:center;
+  border:1px solid rgba(198,173,129,.45); border-radius:8px;
+  font-size:10px; font-weight:500; letter-spacing:.15em; text-transform:uppercase;
+  color:var(--gold); text-decoration:none; cursor:none;
+  transition:background .3s, border-color .3s, color .3s;
+}
+.ep-link:hover { background:var(--gold); border-color:var(--gold); color:var(--ink); }
+.ep-close {
+  position:absolute; top:12px; right:14px;
+  background:none; border:none;
+  color:rgba(255,255,255,.35); font-size:16px;
+  cursor:none; transition:color .2s; line-height:1; padding:0;
+}
+.ep-close:hover { color:rgba(255,255,255,.85); }
+
+/* ── A: Watermark logo sulla mappa ──────────────────── */
+#map-watermark {
+  position:fixed; bottom:108px; left:28px; z-index:3;
+  width:68px; opacity:.14;
+  pointer-events:none; user-select:none;
+  filter:saturate(.4) brightness(1.6);
+  transition:opacity .3s;
+}
+@media (max-width:680px) { #map-watermark { width:52px; bottom:96px; left:16px; } }
+
+/* ── B: Loader branding elezioni ─────────────────────── */
+.l-lista {
+  width:68px; margin-top:28px;
+  opacity:0;
+}
+.l-elezioni {
+  font-family:'Inter',system-ui,sans-serif;
+  font-size:9px; font-weight:500; letter-spacing:.24em; text-transform:uppercase;
+  color:var(--gold); opacity:0; margin-top:10px;
+}
+
+/* ── C: Badge logo nell'header ───────────────────────── */
+#hdr-logo {
+  width:34px; height:34px; object-fit:contain;
+  opacity:.72; flex-shrink:0;
+  border-radius:50%;
+  transition:opacity .3s;
+}
+#hdr-logo:hover { opacity:1; }
+@media (max-width:680px) { #hdr-logo { width:28px; height:28px; } }
+
+/* ── D: Watermark sfondo ideas section ───────────────── */
+#is-watermark {
+  position:absolute; top:64%; left:50%;
+  transform:translate(-50%,-50%);
+  width:min(340px,52vw); opacity:.045;
+  pointer-events:none; user-select:none;
+  filter:saturate(.2);
+}
+
+/* ── Link admin nascosto ─────────────────────────────── */
+#adm-link{
+  position:absolute;bottom:14px;right:16px;z-index:55;
+  display:flex;align-items:center;gap:5px;
+  padding:5px 10px;
+  background:rgba(16,14,12,.55);
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:6px;
+  font-size:9px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);text-decoration:none;
+  backdrop-filter:blur(8px);
+  transition:all .3s;
+}
+#adm-link:hover{color:var(--gold);border-color:rgba(198,173,129,.45);background:rgba(16,14,12,.8);}
+
+/* ── Election popup ─────────────────────────────────── */
+#election-popup {
+  position:fixed; top:50%; left:50%; z-index:100;
+  width:min(280px,84vw);
+  background:rgba(16,14,12,.72);
+  backdrop-filter:blur(32px) saturate(200%);
+  -webkit-backdrop-filter:blur(32px) saturate(200%);
+  border:1px solid rgba(255,255,255,.20);
+  border-radius:24px; padding:20px;
+  display:flex; flex-direction:column; align-items:center; gap:14px;
+  box-shadow:0 28px 70px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.10);
+  transform:translate(-50%,-50%) scale(.88);
+  opacity:0; pointer-events:none;
+  transition:transform .44s var(--ease), opacity .36s;
+}
+#election-popup.open { transform:translate(-50%,-50%) scale(1); opacity:1; pointer-events:auto; }
+#election-popup > img { width:100%; border-radius:16px; display:block; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+.popup-close {
+  position:absolute; top:12px; right:14px;
+  background:none; border:none;
+  color:rgba(255,255,255,.38); font-size:18px;
+  cursor:none; transition:color .2s; line-height:1; padding:0;
+}
+.popup-close:hover { color:#fff; }
+
+/* ── Errore form ─────────────────────────────────────── */
+#pi-error {
+  font-size:11px; letter-spacing:.04em;
+  color:rgba(255,110,110,.9); min-height:16px;
+  text-align:center; margin-top:2px;
+}
+
+/* ── Admin overlay (?admin) ─────────────────────────── */
+#adm{position:fixed;inset:0;z-index:400;background:rgba(8,8,8,.97);backdrop-filter:blur(20px);display:none;flex-direction:column;overflow:hidden;}
+#adm-login{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:2;}
+#adm-login-box{width:min(340px,90vw);background:rgba(22,19,16,.95);border:1px solid rgba(255,255,255,.13);border-radius:18px;padding:36px 28px;display:flex;flex-direction:column;gap:14px;}
+#adm-login-box h2{font-family:'Playfair Display',Georgia,serif;font-weight:400;font-size:24px;text-align:center;color:var(--white);}
+#adm-login-box .adm-sub{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);opacity:.7;text-align:center;}
+.adm-field{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.13);border-radius:8px;padding:12px 14px;color:var(--white);font-family:'Inter',sans-serif;font-size:14px;width:100%;transition:border-color .3s;}
+.adm-field:focus{outline:none;border-color:rgba(255,255,255,.36);}
+.adm-field::placeholder{color:rgba(255,255,255,.25);font-style:italic;}
+#adm-go{width:100%;padding:13px;background:var(--white);border:1px solid var(--white);border-radius:8px;color:var(--ink);font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:background .3s,color .3s;}
+#adm-go:hover{background:transparent;color:var(--white);}
+#adm-err{font-size:11px;color:rgba(255,110,110,.9);text-align:center;min-height:15px;}
+#adm-dash{display:none;flex-direction:column;flex:1;min-height:0;}
+#adm-hdr{display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid rgba(255,255,255,.1);flex-shrink:0;}
+#adm-hdr h3{font-family:'Playfair Display',Georgia,serif;font-size:20px;font-weight:400;color:var(--white);}
+.adm-hdr-r{display:flex;gap:10px;align-items:center;}
+.adm-stat{font-size:11px;letter-spacing:.06em;color:var(--gold);opacity:.8;padding:5px 12px;border:1px solid rgba(198,173,129,.3);border-radius:6px;}
+#adm-close-btn,#adm-out-btn{padding:7px 16px;background:transparent;border-radius:6px;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:all .25s;}
+#adm-close-btn{border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.5);}
+#adm-close-btn:hover{border-color:#fff;color:#fff;}
+#adm-out-btn{border:1px solid rgba(255,80,70,.4);color:rgba(255,100,90,.8);}
+#adm-out-btn:hover{background:rgba(255,80,70,.15);color:#fff;border-color:rgba(255,80,70,.8);}
+#adm-filters{display:flex;gap:6px;padding:12px 32px;border-bottom:1px solid rgba(255,255,255,.08);overflow-x:auto;scrollbar-width:none;flex-shrink:0;}
+.adm-f{padding:6px 14px;border-radius:6px;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.45);border:1px solid transparent;cursor:pointer;background:none;white-space:nowrap;transition:all .2s;}
+.adm-f:hover{background:rgba(255,255,255,.06);color:#fff;border-color:rgba(255,255,255,.15);}
+.adm-f.adm-fa{background:rgba(198,173,129,.10);border-color:var(--gold);color:var(--gold);}
+#adm-body{flex:1;overflow-y:auto;padding:20px 32px 40px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.1) transparent;}
+#adm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;}
+#adm-empty{display:none;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;gap:12px;text-align:center;}
+#adm-empty p{font-family:'Playfair Display',Georgia,serif;font-style:italic;font-size:16px;color:rgba(255,255,255,.28);line-height:1.7;}
+.adm-card{background:rgba(22,19,16,.9);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:8px;transition:border-color .2s;}
+.adm-card:hover{border-color:rgba(255,255,255,.2);}
+.adm-ct{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.adm-badge{padding:2px 9px;border-radius:5px;font-size:9px;letter-spacing:.16em;text-transform:uppercase;border:1px solid;}
+.adm-badge.i{background:rgba(198,173,129,.1);border-color:rgba(198,173,129,.4);color:var(--gold);}
+.adm-badge.s{background:rgba(255,140,60,.1);border-color:rgba(255,140,60,.4);color:#f0a060;}
+.adm-zone{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.35);}
+.adm-date{font-size:9px;color:rgba(255,255,255,.25);margin-left:auto;}
+.adm-author{font-size:11px;font-weight:500;color:rgba(255,255,255,.5);}
+.adm-street{font-size:11px;color:rgba(255,255,255,.35);border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:6px;}
+.adm-text{font-family:'Playfair Display',Georgia,serif;font-style:italic;font-size:13px;line-height:1.6;color:rgba(255,255,255,.7);flex:1;}
+.adm-del{align-self:flex-end;margin-top:4px;padding:6px 16px;border-radius:6px;cursor:pointer;background:transparent;border:1px solid rgba(255,80,70,.35);color:rgba(255,100,90,.75);font-size:9px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;transition:all .2s;}
+.adm-del:hover{background:rgba(255,80,70,.15);border-color:rgba(255,80,70,.8);color:#fff;}
+@media(max-width:680px){#adm-hdr,#adm-filters,#adm-body{padding-left:16px;padding-right:16px;}#adm-grid{grid-template-columns:1fr;}}
+
+/* ── Social links ────────────────────────────────────── */
+.social-row {
+  display:flex; gap:10px; justify-content:center; align-items:center;
+  margin-top:4px;
+}
+.social-link {
+  display:flex; align-items:center; justify-content:center;
+  width:34px; height:34px; border-radius:50%;
+  border:1px solid rgba(255,255,255,.18);
+  color:rgba(255,255,255,.5); text-decoration:none; cursor:none;
+  flex-shrink:0;
+  transition:border-color .25s, color .25s, background .25s;
+}
+.social-link:hover {
+  border-color:var(--gold); color:var(--gold);
+  background:rgba(198,173,129,.10);
+}
+.social-link svg { display:block; }
+
+/* ── Locandina dentro i pannelli ─────────────────────── */
+.locandina-wrap { margin-top:22px; }
+.locandina-img {
+  width:100%; border-radius:16px; display:block;
+  margin-bottom:12px; box-shadow:0 8px 24px rgba(0,0,0,.35);
+}
+.locandina-link {
+  display:block; width:100%; padding:12px; text-align:center; cursor:none;
+  background:transparent; border:1px solid rgba(198,173,129,.4);
+  border-radius:6px; font-size:10px; font-weight:500;
+  letter-spacing:.15em; text-transform:uppercase;
+  color:var(--gold); text-decoration:none;
+  transition:background .3s, border-color .3s, color .3s;
+}
+.locandina-link:hover { background:var(--gold); border-color:var(--gold); color:var(--ink); }
+
+/* ── Touch device — nascondi cursore custom ──────────── */
+@media (pointer:coarse) {
+  #cur, #cur-ring { display:none !important; }
+  body, body.hov { cursor:auto !important; }
+}
+
+/* ── Mobile (≤ 680px) ────────────────────────────────── */
+@media (max-width:680px) {
+
+  /* Header compatto */
+  #hdr { padding:18px 20px 0; }
+  .h-right, #zone-hint { display:none; }
+  .h-title { font-size:11px; }
+
+  /* Zone wrap — più piccolo, vicino al fondo */
+  #zone-wrap {
+    bottom:18px;
+    padding:6px;
+    max-width:calc(100vw - 20px);
+    transition:opacity .32s, transform .32s;
+  }
+  /* Nasconde la zone bar mentre un pannello è aperto */
+  #zone-wrap.panel-visible {
+    opacity:0;
+    pointer-events:none;
+    transform:translateX(-50%) translateY(14px);
+  }
+  .cat-tab { padding:9px 15px; font-size:10px; letter-spacing:.14em; }
+  .sub-tab { padding:6px 12px; font-size:11px; }
+
+  /* ── Pannelli → bottom sheet ─────────────────────── */
+  .side-panel {
+    top:auto !important;
+    bottom:0 !important;
+    left:0 !important;
+    right:0 !important;
+    width:100% !important;
+    height:76vh !important;
+    max-height:76vh !important;
+    border-radius:22px 22px 0 0 !important;
+    border-right:none !important;
+    border-left:none !important;
+    border-top:1px solid var(--g-border) !important;
+    padding:40px 22px 28px !important;
+    /* Slide dal basso invece che dai lati */
+    transform:translateY(100%) !important;
+    opacity:1 !important;
+  }
+  .side-panel.open { transform:translateY(0) !important; }
+
+  /* Handle bar — indica lo swipe verso il basso */
+  .side-panel::before {
+    content:'';
+    position:absolute;
+    top:10px; left:50%;
+    transform:translateX(-50%);
+    width:38px; height:4px;
+    background:rgba(255,255,255,.25);
+    border-radius:2px;
+  }
+
+  /* Pannello info-via sopra il pannello idee */
+  #panel-street {
+    height:68vh !important;
+    max-height:68vh !important;
+    z-index:31 !important;
+  }
+
+  /* Foto via più bassa */
+  #ps-photo { height:130px; }
+
+  /* Dropdown Places - larghezza corretta */
+  .pac-container { width:calc(100vw - 60px) !important; }
+
+  /* Ideas section su mobile */
+  #is-header { padding:28px 20px 18px; gap:14px; }
+  #is-header h2 { font-size:22px; }
+  #is-filters { padding:14px 20px; }
+  #is-body { padding:20px 16px 40px; }
+  #is-grid { grid-template-columns:1fr; }
+
+  /* Bottoni header — impilati verticalmente a destra */
+  #hdr-btns { flex-direction:column; align-items:flex-end; gap:5px; }
+  #ideas-view-btn { font-size:10px; padding:7px 12px; letter-spacing:.08em; }
+  #elezioni-btn   { font-size:10px; padding:7px 12px; letter-spacing:.08em; }
+
+  /* Elezioni panel — centrato su mobile */
+  #elezioni-panel {
+    right:auto; left:50%;
+    width:min(240px,80vw);
+    transform:translateX(-50%) translateY(calc(-100% - 80px));
+  }
+  #elezioni-panel.open { transform:translateX(-50%) translateY(0); }
+}
+</style>
+</head>
+<body>
+
+<div id="cur"></div>
+<div id="cur-ring"></div>
+
+<!-- Loader -->
+<div id="load">
+  <div class="l-city">Trani</div>
+  <div class="l-sub">Puglia · Italia</div>
+  <div class="l-bar-wrap"><div class="l-bar" id="l-bar"></div></div>
+  <img class="l-lista" src="foto_elezione/fotoLista.png" alt="" aria-hidden="true">
+  <div class="l-elezioni">24 · 25 Maggio · Elezioni Amministrative</div>
+</div>
+
+<!-- A: Logo watermark sulla mappa -->
+<img id="map-watermark" src="foto_elezione/fotoLista.png" alt="" aria-hidden="true">
+
+<!-- Map + overlays -->
+<div id="map"></div>
+<div id="vig"></div>
+<div id="top-fade"></div>
+<div id="bot-fade"></div>
+
+<!-- Header -->
+<header id="hdr">
+  <div style="display:flex;align-items:center;gap:13px;">
+    <img id="hdr-logo" src="foto_elezione/fotoLista.png" alt="Marinaro Sindaco per Trani">
+    <div>
+      <div class="h-title">Trani Partecipa</div>
+      <div class="h-sub">Immagina la tua città</div>
+    </div>
+  </div>
+  <div id="hdr-btns" style="display:flex;gap:8px;align-items:center;">
+    <button id="ideas-view-btn">Idee condivise</button>
+    <button id="elezioni-btn">24/25 Maggio</button>
+  </div>
+</header>
+
+<!-- Elezioni — floating locandina panel -->
+<div id="elezioni-panel">
+  <button class="ep-close" id="ep-close">✕</button>
+  <img src="foto_elezione/locandinaMia.jpeg" alt="Candidatura Mattia Di Tondo" loading="lazy">
+  <a class="ep-link" href="https://ditondoconsigliere.vercel.app/" target="_blank" rel="noopener">Scopri il programma →</a>
+  <div class="social-row">
+    <a class="social-link" href="https://www.instagram.com/mattia_ditondo_/" target="_blank" rel="noopener" title="Instagram">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+    </a>
+    <a class="social-link" href="https://www.facebook.com/mattia.ditondo.7?locale=it_IT" target="_blank" rel="noopener" title="Facebook">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+    </a>
+  </div>
+</div>
+
+<!-- Zone selector (due livelli, costruito via JS) -->
+<div id="zone-wrap">
+  <div id="cat-bar"></div>
+  <div id="sub-sep"></div>
+  <div id="sub-bar"></div>
+</div>
+<div id="zone-hint">Seleziona un'area · poi scegli la zona</div>
+
+<!-- Left panel — Ideas -->
+<aside id="panel-ideas" class="side-panel">
+  <button class="p-close" id="ideas-close">✕</button>
+  <div class="pi-title" id="pi-title"></div>
+  <div class="pi-div"></div>
+  <div id="pi-ideas"></div>
+  <div class="pi-instr">Hai un'idea per questa zona?<br>Condividila con la città.</div>
+  <div id="pi-form">
+    <form autocomplete="off" onsubmit="return false" style="display:contents">
+    <div id="pi-type-row">
+      <button class="type-btn sel-idea" data-type="idea" id="pi-type-idea">Idea</button>
+      <button class="type-btn" data-type="segnalazione" id="pi-type-seg">Segnalazione / Problema</button>
+    </div>
+    <input  class="ifield" id="pi-name"   type="text" placeholder="Il tuo nome (opzionale)" autocomplete="new-password">
+    <label  class="street-label" for="pi-street">Via di riferimento</label>
+    <input  class="ifield" id="pi-street" type="text" placeholder="Cerca una via a Trani…" autocomplete="new-password">
+    <textarea class="ifield" id="pi-text" placeholder="Descrivi il problema o la proposta per questa via…" autocomplete="off"></textarea>
+    <label id="pi-photo-label" for="pi-photo-input">
+      <span style="font-size:16px;opacity:.7">📎</span> Allega una foto (opzionale)
+    </label>
+    <input type="file" id="pi-photo-input" accept="image/*">
+    <img id="pi-photo-preview" alt="Anteprima foto">
+    <div id="pi-error"></div>
+    <button id="pi-submit">Invia la tua idea</button>
+    </form>
+  </div>
+  <div id="pi-ok">
+    <div class="star">✦</div>
+    <p>Grazie!<br>La tua idea è stata registrata.<br>Insieme costruiamo Trani.</p>
+  </div>
+  <div class="locandina-wrap">
+    <div class="pi-div" style="margin-bottom:16px;"></div>
+    <img class="locandina-img" src="foto_elezione/locandinaMia.jpeg" alt="Elezioni Trani 2025" loading="lazy">
+    <a class="locandina-link" href="https://ditondoconsigliere.vercel.app/" target="_blank" rel="noopener">Scopri il programma →</a>
+    <div class="social-row" style="margin-top:12px;">
+      <a class="social-link" href="https://www.instagram.com/mattia_ditondo_/" target="_blank" rel="noopener" title="Instagram">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+      </a>
+      <a class="social-link" href="https://www.facebook.com/mattia.ditondo.7?locale=it_IT" target="_blank" rel="noopener" title="Facebook">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+      </a>
+    </div>
+  </div>
+</aside>
+
+<!-- Right panel — Street info -->
+<aside id="panel-street" class="side-panel">
+  <button class="p-close" id="street-close">✕</button>
+  <img id="ps-photo" alt="Foto della via" loading="lazy">
+  <div class="ps-badge" id="ps-badge">Via</div>
+  <div id="ps-name">—</div>
+  <div id="ps-address"></div>
+  <div class="ps-div"></div>
+  <div id="ps-hood"></div>
+  <div id="ps-type"></div>
+  <a id="ps-link" href="#" target="_blank" rel="noopener">Apri in Google Maps →</a>
+  <div class="locandina-wrap">
+    <div class="ps-div" style="margin-bottom:14px;"></div>
+    <img class="locandina-img" src="foto_elezione/locandinaMia.jpeg" alt="Elezioni Trani 2025" loading="lazy">
+    <a class="locandina-link" href="https://ditondoconsigliere.vercel.app/" target="_blank" rel="noopener">Scopri il programma →</a>
+    <div class="social-row" style="margin-top:12px;">
+      <a class="social-link" href="https://www.instagram.com/mattia_ditondo_/" target="_blank" rel="noopener" title="Instagram">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+      </a>
+      <a class="social-link" href="https://www.facebook.com/mattia.ditondo.7?locale=it_IT" target="_blank" rel="noopener" title="Facebook">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+      </a>
+    </div>
+  </div>
+</aside>
+
+<!-- ── Ideas section ───────────────────────────────── -->
+<div id="ideas-section">
+  <img id="is-watermark" src="foto_elezione/fotoLista.png" alt="" aria-hidden="true">
+  <a id="adm-link" href="admin.html">
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    Admin
+  </a>
+  <div id="is-header">
+    <button id="is-back">←</button>
+    <h2>Idee condivise</h2>
+    <span id="is-total"></span>
+  </div>
+  <div id="is-filters">
+    <div class="is-filter active" data-filter="all">Tutte</div>
+    <div class="is-filter" data-filter="0">Trani Nord</div>
+    <div class="is-filter" data-filter="1">Trani Centro</div>
+    <div class="is-filter" data-filter="2">Trani Sud</div>
+  </div>
+  <div id="is-body">
+    <div id="is-grid"></div>
+    <div id="is-empty">
+      <div class="is-empty-icon">✦</div>
+      <p>Nessuna idea ancora.<br>Sii il primo a condividere.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Election popup -->
+<div id="election-popup">
+  <button class="popup-close" id="popup-close">✕</button>
+  <img src="foto_elezione/locandinaMia.jpeg" alt="Candidatura Mattia Di Tondo" loading="lazy">
+  <a class="ep-link" href="https://ditondoconsigliere.vercel.app/" target="_blank" rel="noopener">Scopri il programma →</a>
+  <div class="social-row">
+    <a class="social-link" href="https://www.instagram.com/mattia_ditondo_/" target="_blank" rel="noopener" title="Instagram">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+    </a>
+    <a class="social-link" href="https://www.facebook.com/mattia.ditondo.7?locale=it_IT" target="_blank" rel="noopener" title="Facebook">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+    </a>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   ZONE DATA
+   ═══════════════════════════════════════════════════════════ */
+const ZONES = [
+  /* 0 */ { name:'Via Andria',   sub:'Via Canonico Don Nicola Ragno', address:'Via Canonico Don Nicola Ragno, Trani, BT, Italia', lat:41.2795196, lng:16.4071366, zoom:16.5, pitch:55, bearing:-20 },
+  /* 1 */ { name:"Sant'Angelo",  sub:'Viale Germania',                address:'Viale Germania, Trani, BT, Italia',               lat:41.2735950, lng:16.4060016, zoom:16.5, pitch:58, bearing:28  },
+  /* 2 */ { name:'Via Superga',  sub:'Via Superga',                   address:'Via Superga, Trani, BT, Italia',                  lat:41.2697445, lng:16.4133391, zoom:16.5, pitch:52, bearing:-10 },
+  /* 3 */ { name:'Stadio',       sub:'Via Francesco Cutinelli',       address:'Via Francesco Cutinelli, Trani, BT, Italia',      lat:41.2681100, lng:16.4213995, zoom:16.5, pitch:60, bearing:40  },
+  /* 4 */ { name:'Centro',       sub:'Piazza della Libertà',          address:'Piazza della Libertà, Trani, BT, Italia',         lat:41.2768218, lng:16.4195614, zoom:16.5, pitch:62, bearing:-42 },
+  /* 5 */ { name:'Pozzopiano',   sub:'Via Giorgio la Pira',           address:'Via Giorgio la Pira, Trani, BT, Italia',          lat:41.2670043, lng:16.4348627, zoom:16.5, pitch:50, bearing:15  },
+  /* 6 */ { name:'Capirro',      sub:'Via Prof. Raffaello Piracci',   address:'Via Professor Raffaello Piracci, Trani, BT, Italia', lat:41.2534084, lng:16.4243059, zoom:16.5, pitch:55, bearing:20  },
+];
+
+const CATEGORIES = [
+  { name:'Trani Nord',   zones:[0,1,2] },
+  { name:'Trani Centro', zones:[3,4]   },
+  { name:'Trani Sud',    zones:[5,6]   },
+];
+
+// HOME allargato per coprire tutte e 7 le zone (lat 41.25 ÷ 41.28)
+const HOME = { lat:41.2660, lng:16.4200, zoom:12.8, pitch:42, bearing:0 };
+
+/* ═══════════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════════ */
+let isFlying  = false;
+let panelOpen = false;
+let activeIdx = null;
+let rotRafId  = null;
+let rotLastTs = null;
+
+/* ═══════════════════════════════════════════════════════════
+   MAP — MapLibre GL JS (satellite 3D, no API key needed)
+   ═══════════════════════════════════════════════════════════ */
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    sources: {
+      sat: {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256
+      }
+    },
+    layers: [
+      { id:'bg',  type:'background', paint:{ 'background-color':'#100e0b' } },
+      { id:'sat', type:'raster', source:'sat', paint:{ 'raster-opacity':0.9 } }
+    ]
+  },
+  center:  [HOME.lng, HOME.lat],
+  zoom:    HOME.zoom,
+  pitch:   HOME.pitch,
+  bearing: HOME.bearing,
+  antialias: true,
+  interactive: false
+});
+
+map.on('load', () => {
+  gsap.to('#l-bar', { width: '100%', duration: 1.5, ease: 'power2.inOut' });
+  gsap.to('.l-lista', { opacity: 1, duration: 0.7, delay: 0.6, ease: 'power2.out' });
+  gsap.to('.l-elezioni', { opacity: 1, duration: 0.7, delay: 0.9, ease: 'power2.out' });
+  gsap.to('.l-city, .l-sub, .l-lista, .l-elezioni', { y: -15, opacity: 0, duration: 1, stagger: 0.07, delay: 1.4, ease: 'power2.inOut' });
+  gsap.to('#load', { 
+    opacity: 0, duration: 1.2, delay: 2, 
+    ease: 'power2.inOut',
+    onComplete: () => {
+      document.getElementById('load').style.display = 'none';
+      startRotation();
+      
+      // UI Entrance Animations
+      gsap.from('#hdr', { y: -20, opacity: 0, duration: 1.4, ease: 'power2.out' });
+      gsap.from('#zone-wrap', { y: 20, opacity: 0, duration: 1.4, ease: 'power2.out', delay: 0.3 });
+      gsap.from('#zone-hint', { opacity: 0, duration: 1.4, delay: 0.7 });
+    }
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════
+   IDLE ROTATION  (3.5°/min via rAF)
+   ═══════════════════════════════════════════════════════════ */
+function startRotation() {
+  cancelRotation();
+  rotLastTs = null;
+  function step(ts) {
+    if (!isFlying && !panelOpen) {
+      if (rotLastTs !== null) {
+        map.setBearing((map.getBearing() + (ts - rotLastTs) * 3.5 / 60000) % 360);
+      }
+      rotLastTs = ts;
+    } else {
+      rotLastTs = null;
+    }
+    rotRafId = requestAnimationFrame(step);
+  }
+  rotRafId = requestAnimationFrame(step);
+}
+function cancelRotation() {
+  if (rotRafId) { cancelAnimationFrame(rotRafId); rotRafId = null; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FLY-TO
+   ═══════════════════════════════════════════════════════════ */
+function flyTo(z, onDone) {
+  isFlying = true;
+  cancelRotation();
+  map.flyTo({ center:[z.lng,z.lat], zoom:z.zoom, pitch:z.pitch, bearing:z.bearing, duration:2800, essential:true });
+  setTimeout(() => { isFlying = false; onDone?.(); }, 2900);
+}
+
+function flyHome(onDone) {
+  isFlying = true;
+  map.flyTo({ center:[HOME.lng,HOME.lat], zoom:HOME.zoom, pitch:HOME.pitch, bearing:HOME.bearing, duration:2200, essential:true });
+  setTimeout(() => { isFlying = false; startRotation(); onDone?.(); }, 2300);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CATEGORIA + ZONE (due livelli)
+   ═══════════════════════════════════════════════════════════ */
+let activeCat = null;
+
+// Costruisce i tab di categoria
+CATEGORIES.forEach((cat, ci) => {
+  const tab = document.createElement('div');
+  tab.className = 'cat-tab';
+  tab.textContent = cat.name;
+  tab.addEventListener('mouseenter', () => document.body.classList.add('hov'));
+  tab.addEventListener('mouseleave', () => document.body.classList.remove('hov'));
+  tab.addEventListener('click', () => selectCategory(ci));
+  document.getElementById('cat-bar').appendChild(tab);
+});
+
+function selectCategory(ci) {
+  // Secondo click sulla stessa categoria: chiudi
+  if (activeCat === ci) { closeCategory(); return; }
+
+  const hadActiveZone = activeIdx !== null;
+  const subBar = document.getElementById('sub-bar');
+  const subSep = document.getElementById('sub-sep');
+
+  // 1. Se c'è una zona attiva: chiudi pannelli e torna a HOME
+  closePanels(hadActiveZone);
+
+  // 2. Nascondi hint e evidenzia la nuova categoria
+  document.getElementById('zone-hint').style.opacity = '0';
+  document.querySelectorAll('.cat-tab').forEach((t,i) => t.classList.toggle('active', i === ci));
+
+  // 3. Collassa il sub-bar corrente
+  subBar.classList.remove('open');
+  subSep.classList.remove('show');
+
+  // 4. Mostra i sub-tab della nuova categoria:
+  //    – dopo il fly-home (2.4s) se c'era una zona attiva
+  //    – quasi subito (80ms per CSS) se si stava solo navigando le categorie
+  const delay = hadActiveZone ? 2400 : 80;
+  setTimeout(() => {
+    activeCat = ci;
+    subBar.innerHTML = '';
+    CATEGORIES[ci].zones.forEach(zi => {
+      const tab = document.createElement('div');
+      tab.className = 'sub-tab';
+      tab.dataset.zone = zi;
+      tab.textContent = ZONES[zi].name;
+      tab.addEventListener('mouseenter', () => document.body.classList.add('hov'));
+      tab.addEventListener('mouseleave', () => document.body.classList.remove('hov'));
+      tab.addEventListener('click', () => selectZone(zi));
+      subBar.appendChild(tab);
+    });
+    subBar.classList.add('open');
+    subSep.classList.add('show');
+  }, delay);
+}
+
+function closeCategory() {
+  activeCat = null;
+  document.querySelectorAll('.cat-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('sub-bar').classList.remove('open');
+  document.getElementById('sub-sep').classList.remove('show');
+  document.getElementById('zone-hint').style.opacity = '';
+}
+
+function selectZone(zi) {
+  if (isFlying) return;
+  if (activeIdx === zi && panelOpen) return;
+  closePanels(false);
+  document.querySelectorAll('.sub-tab').forEach(t => t.classList.toggle('active', +t.dataset.zone === zi));
+  activeIdx = zi;
+  document.getElementById('zone-hint').style.opacity = '0';
+  flyTo(ZONES[zi], () => openIdeasPanel(ZONES[zi], zi));
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PANELS — open / close
+   ═══════════════════════════════════════════════════════════ */
+function closePanels(goHome = true) {
+  document.getElementById('panel-ideas').classList.remove('open');
+  document.getElementById('panel-street').classList.remove('open');
+  document.getElementById('zone-wrap').classList.remove('panel-visible');
+  panelOpen = false;
+  activeIdx = null;
+  document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+  if (goHome) flyHome(() => { document.getElementById('zone-hint').style.opacity = ''; });
+}
+
+document.getElementById('ideas-close').addEventListener('click',  () => closePanels(true));
+document.getElementById('street-close').addEventListener('click', () => {
+  document.getElementById('panel-street').classList.remove('open');
+});
+
+/* ═══════════════════════════════════════════════════════════
+   IDEAS PANEL — open + load recent ideas
+   ═══════════════════════════════════════════════════════════ */
+async function openIdeasPanel(z, idx) {
+  panelOpen = true;
+  document.getElementById('pi-title').textContent = z.name;
+  document.getElementById('pi-form').style.display = '';
+  document.getElementById('pi-ok').style.display  = 'none';
+  document.getElementById('pi-name').value   = '';
+  document.getElementById('pi-street').value = '';
+  document.getElementById('pi-text').value   = '';
+  document.getElementById('pi-text').style.borderColor = '';
+  selectedType = 'idea';
+  selectedPhotoB64 = null;
+  document.getElementById('pi-photo-input').value = '';
+  document.getElementById('pi-photo-preview').style.display = 'none';
+  document.getElementById('pi-type-idea').classList.add('sel-idea');
+  document.getElementById('pi-type-seg').classList.remove('sel-seg');
+  selectedStreetUrl = null;
+  document.getElementById('panel-street').classList.remove('open');
+
+  const pIdeas = document.getElementById('pi-ideas');
+  pIdeas.innerHTML = '<div class="ideas-hd" style="opacity:.28">Caricamento…</div>';
+  document.getElementById('panel-ideas').classList.add('open');
+  document.getElementById('zone-wrap').classList.add('panel-visible');
+
+  // GSAP animation for panel content
+  gsap.fromTo('#panel-ideas > *:not(#pi-ideas):not(#ideas-close)', 
+    { opacity: 0, x: -20 }, 
+    { opacity: 1, x: 0, duration: 0.6, stagger: 0.05, ease: 'power2.out', delay: 0.1 }
+  );
+
+  const { ideas, total } = await fetchZoneIdeas(idx, 3);
+  if (ideas.length) {
+    const suffix = total > 3 ? ` · ${total} totali` : '';
+    pIdeas.innerHTML = `<div class="ideas-hd">Idee condivise${suffix}</div>` +
+      ideas.map(r =>
+        `<div class="idea-item">
+           <div class="idea-name">${esc(r.name)}</div>
+           <div class="idea-body">${esc(r.text)}</div>
+         </div>`
+      ).join('');
+    gsap.from('.idea-item', { y: 15, opacity: 0, duration: 0.5, stagger: 0.08, ease: 'power2.out' });
+  } else {
+    pIdeas.innerHTML = '<div class="ideas-hd" style="opacity:.22">Nessuna idea ancora — sii il primo</div>';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TYPE SELECTOR
+   ═══════════════════════════════════════════════════════════ */
+let selectedType = 'idea';
+
+document.querySelectorAll('.type-btn').forEach(btn => {
+  btn.addEventListener('mouseenter', () => document.body.classList.add('hov'));
+  btn.addEventListener('mouseleave', () => document.body.classList.remove('hov'));
+  btn.addEventListener('click', () => {
+    selectedType = btn.dataset.type;
+    document.getElementById('pi-type-idea').classList.toggle('sel-idea', selectedType === 'idea');
+    document.getElementById('pi-type-seg').classList.toggle('sel-seg', selectedType === 'segnalazione');
+    document.getElementById('pi-type-idea').classList.toggle('sel-idea', selectedType === 'idea');
+    document.getElementById('pi-type-seg').classList.toggle('sel-seg',  selectedType === 'segnalazione');
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════
+   PHOTO UPLOAD
+   ═══════════════════════════════════════════════════════════ */
+let selectedPhotoB64  = null;
+let selectedStreetUrl = null;
+
+document.getElementById('pi-photo-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) { selectedPhotoB64 = null; document.getElementById('pi-photo-preview').style.display = 'none'; return; }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    selectedPhotoB64 = ev.target.result;
+    const prev = document.getElementById('pi-photo-preview');
+    prev.src = selectedPhotoB64;
+    prev.style.display = 'block';
+    document.getElementById('pi-photo-label').querySelector('span + *') ||
+      (document.getElementById('pi-photo-label').lastChild.textContent = ' Foto selezionata ✓');
+  };
+  reader.readAsDataURL(file);
+});
+
+/* ═══════════════════════════════════════════════════════════
+   BLACKLIST
+   ═══════════════════════════════════════════════════════════ */
+const BLACKLIST = [
+  'troia','troie','cazzo','minchia','vaffanculo','fanculo','stronzo','stronza',
+  'bastardo','bastarda','puttana','puttane','coglione','coglioni',
+  'figliodiputtana','merda','frocio','froccia','ricchione','negro','negra',
+  'porco','porca','porcaeva','porcadio','dioporco','porcoddio','porcoddio',
+  'porcoiddio','porcodio','mannaggiaporca','mignotta','baldracca','sgualdrina',
+  'scrofa','cretino','cretina','deficiente','ritardato','ritardata',
+  'mongolo','mongola','fetente','pedofilo','pedofilia','stupro',
+  'vaffan','affanculo','fanculo','vaff',
+];
+function _norm(s) {
+  return s.toLowerCase().replace(/\s+/g,'')
+    .replace(/4/g,'a').replace(/3/g,'e').replace(/1/g,'i').replace(/0/g,'o')
+    .replace(/5/g,'s').replace(/8/g,'b').replace(/\$/g,'s').replace(/@/g,'a')
+    .replace(/!/g,'i').replace(/\|/g,'i').replace(/\+/g,'t');
+}
+function hasBlacklistedWord(t) { const n=_norm(t); return BLACKLIST.some(w=>n.includes(_norm(w))); }
+
+/* ═══════════════════════════════════════════════════════════
+   SUBMIT
+   ═══════════════════════════════════════════════════════════ */
+document.getElementById('pi-submit').addEventListener('click', async () => {
+  const txt    = document.getElementById('pi-text').value.trim();
+  const name   = document.getElementById('pi-name').value.trim();
+  const street = document.getElementById('pi-street').value.trim();
+  const errEl  = document.getElementById('pi-error');
+  errEl.textContent = '';
+  document.getElementById('pi-street').style.borderColor = '';
+  document.getElementById('pi-text').style.borderColor   = '';
+
+  if (!street) {
+    document.getElementById('pi-street').style.borderColor = 'rgba(255,255,255,.65)';
+    errEl.textContent = 'Indica la via di riferimento.';
+    return;
+  }
+  if (!txt) {
+    document.getElementById('pi-text').style.borderColor = 'rgba(255,255,255,.65)';
+    errEl.textContent = 'Scrivi la tua idea o segnalazione.';
+    return;
+  }
+  if (hasBlacklistedWord(txt) || hasBlacklistedWord(name)) {
+    document.getElementById('pi-text').style.borderColor = 'rgba(255,90,90,.7)';
+    errEl.textContent = 'Il testo contiene parole non ammesse. Modifica e riprova.';
+    return;
+  }
+
+  const btn = document.getElementById('pi-submit');
+  btn.disabled = true; btn.textContent = 'Invio…';
+
+  await submitIdea(activeIdx, name, txt, street, selectedType, selectedPhotoB64, selectedStreetUrl);
+
+  document.getElementById('pi-form').style.display = 'none';
+  document.getElementById('pi-ok').style.display   = 'flex';
+  btn.disabled = false; btn.textContent = 'Invia la tua idea';
+  setTimeout(() => closePanels(true), 2200);
+});
+
+/* ═══════════════════════════════════════════════════════════
+   STREET AUTOCOMPLETE — Nominatim / OpenStreetMap (gratuito)
+   ═══════════════════════════════════════════════════════════ */
+function setupNominatimAutocomplete() {
+  const input = document.getElementById('pi-street');
+  let dropdown = null;
+  let debTimer = null;
+
+  function closeDropdown() {
+    if (dropdown) { dropdown.remove(); dropdown = null; }
+  }
+
+  function positionDropdown() {
+    const r = input.getBoundingClientRect();
+    dropdown.style.top   = (r.bottom + 4) + 'px';
+    dropdown.style.left  = r.left + 'px';
+    dropdown.style.width = r.width + 'px';
+  }
+
+  function buildDropdown(results) {
+    closeDropdown();
+    if (!results.length) return;
+    dropdown = document.createElement('div');
+    dropdown.className = 'nom-dropdown';
+    results.forEach(r => {
+      const road = r.address?.road || r.address?.pedestrian || r.address?.footway || r.name || r.display_name.split(',')[0];
+      const suburb = r.address?.suburb || r.address?.neighbourhood || '';
+      const item = document.createElement('div');
+      item.className = 'nom-item';
+      item.innerHTML = `<span class="nom-main">${esc(road)}</span><span class="nom-sub">${esc(suburb || 'Trani')}</span>`;
+      item.addEventListener('mousedown', e => {
+        e.preventDefault();
+        input.value = road;
+        selectedStreetUrl = `https://www.google.com/maps?q=${r.lat},${r.lon}`;
+        closeDropdown();
+        updateStreetPanel({ name: road, address: r.display_name, lat: r.lat, lon: r.lon });
+        isFlying = true;
+        map.flyTo({ center:[+r.lon, +r.lat], zoom:17.5, pitch:58, bearing: map.getBearing(), duration:2200, essential:true });
+        setTimeout(() => { isFlying = false; }, 2300);
+      });
+      dropdown.appendChild(item);
+    });
+    document.body.appendChild(dropdown);
+    positionDropdown();
+  }
+
+  input.addEventListener('input', () => {
+    clearTimeout(debTimer);
+    const q = input.value.trim();
+    selectedStreetUrl = null;
+    if (q.length < 2) { closeDropdown(); return; }
+    debTimer = setTimeout(async () => {
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?street=${encodeURIComponent(q)}&city=Trani&country=Italy&format=json&addressdetails=1&limit=7`;
+        const res  = await fetch(url, { headers:{ 'Accept-Language':'it' } });
+        const data = (await res.json()).filter(r => {
+          const city = (r.address?.city || r.address?.town || r.address?.village || '').toLowerCase();
+          return city === 'trani';
+        });
+        buildDropdown(data);
+      } catch { closeDropdown(); }
+    }, 320);
+  });
+
+  input.addEventListener('blur',  () => setTimeout(closeDropdown, 160));
+  input.addEventListener('focus', () => { if (input.value.trim().length >= 2) input.dispatchEvent(new Event('input')); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDropdown(); });
+  window.addEventListener('scroll', positionDropdown, true);
+}
+
+function updateStreetPanel({ name, address, lat, lon }) {
+  document.getElementById('ps-photo').style.display = 'none';
+  document.getElementById('ps-badge').textContent   = 'Via';
+  document.getElementById('ps-name').textContent    = name || '—';
+  document.getElementById('ps-address').textContent = address?.split(',').slice(0,3).join(',') || '';
+  document.getElementById('ps-hood').textContent    = '';
+  document.getElementById('ps-type').textContent    = `${(+lat).toFixed(5)}, ${(+lon).toFixed(5)}`;
+  document.getElementById('ps-link').href = `https://www.google.com/maps?q=${lat},${lon}`;
+  if (window.innerWidth > 680) {
+    document.getElementById('panel-street').classList.add('open');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   API LAYER — fetch + localStorage fallback
+   ═══════════════════════════════════════════════════════════ */
+const API_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? 'http://localhost:3000' : '';
+const LS_KEY = 'trani_partecipa_v1';
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function lsGet() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch { return []; } }
+function lsSave(zone, name, text, street, type, photo, streetUrl) {
+  const l = lsGet();
+  l.push({ zone, name:name||'Anonimo', text, street, streetUrl:streetUrl||null, type:type||'idea', photo:photo||null, ts:Date.now() });
+  localStorage.setItem(LS_KEY, JSON.stringify(l));
+}
+
+async function fetchZoneIdeas(zone, limit=3) {
+  try {
+    const r = await fetch(`${API_URL}/api/ideas?zone=${zone}&limit=${limit}`);
+    if (!r.ok) throw 0;
+    return await r.json();
+  } catch {
+    const all = lsGet().filter(x => x.zone === zone).reverse().slice(0, limit);
+    return { ideas: all.map(x => ({ name:x.name, text:x.text })), total: all.length };
+  }
+}
+
+async function submitIdea(zone, name, text, street, type, photo, streetUrl) {
+  try {
+    const r = await fetch(`${API_URL}/api/ideas`, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ zone, name, text, street, streetUrl, type, photo })
+    });
+    if (!r.ok) throw 0;
+  } catch {
+    lsSave(zone, name, text, street, type, photo, streetUrl);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CUSTOM CURSOR
+   ═══════════════════════════════════════════════════════════ */
+const cur = document.getElementById('cur'), ring = document.getElementById('cur-ring');
+let mx=0,my=0,rx=0,ry=0;
+document.addEventListener('mousemove', e => {
+  mx=e.clientX; my=e.clientY;
+  cur.style.left=mx+'px'; cur.style.top=my+'px';
+});
+(function tick() {
+  rx+=(mx-rx)*.13; ry+=(my-ry)*.13;
+  ring.style.left=rx+'px'; ring.style.top=ry+'px';
+  requestAnimationFrame(tick);
+})();
+
+// Nascondi cursor custom su input/textarea (usa il cursore di testo nativo)
+document.querySelectorAll('input,textarea').forEach(el => {
+  el.addEventListener('mouseenter', () => { cur.style.display='none'; ring.style.display='none'; el.style.cursor='text'; });
+  el.addEventListener('mouseleave', () => { cur.style.display=''; ring.style.display=''; el.style.cursor=''; });
+});
+document.addEventListener('mousedown', () => {
+  if(navigator.maxTouchPoints > 0) return;
+  cur.style.transform = 'translate(-50%,-50%) scale(0.6)';
+});
+document.addEventListener('mouseup', () => {
+  if(navigator.maxTouchPoints > 0) return;
+  cur.style.transform = 'translate(-50%,-50%) scale(1)';
+});
+// Hover glow su elementi cliccabili
+document.querySelectorAll('button,a,.p-close,.ep-close,.ep-link,.locandina-link').forEach(el => {
+  el.addEventListener('mouseenter', () => document.body.classList.add('hov'));
+  el.addEventListener('mouseleave', () => document.body.classList.remove('hov'));
+});
+
+setupNominatimAutocomplete();
+
+/* ═══════════════════════════════════════════════════════════
+   IDEAS SECTION
+   ═══════════════════════════════════════════════════════════ */
+let isFilter = 'all';
+
+document.getElementById('elezioni-btn').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('elezioni-panel').classList.toggle('open');
+});
+document.getElementById('ep-close').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('elezioni-panel').classList.remove('open');
+});
+document.addEventListener('click', e => {
+  const panel = document.getElementById('elezioni-panel');
+  const btn   = document.getElementById('elezioni-btn');
+  if (panel.classList.contains('open') && !panel.contains(e.target) && e.target !== btn) {
+    panel.classList.remove('open');
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════
+   ELECTION POPUP — auto dopo 10s nella sezione idee (1 volta)
+   ═══════════════════════════════════════════════════════════ */
+let _popupTimer = null;
+function _startPopupTimer() {
+  if (sessionStorage.getItem('ep_shown')) return;
+  _popupTimer = setTimeout(() => {
+    if (!document.getElementById('ideas-section').classList.contains('open')) return;
+    sessionStorage.setItem('ep_shown','1');
+    document.getElementById('election-popup').classList.add('open');
+  }, 10000);
+}
+function _stopPopupTimer() { clearTimeout(_popupTimer); _popupTimer = null; }
+document.getElementById('popup-close').addEventListener('click', () => {
+  document.getElementById('election-popup').classList.remove('open');
+});
+
+document.getElementById('ideas-view-btn').addEventListener('click', () => {
+  document.getElementById('ideas-section').classList.add('open');
+  renderIdeasSection();
+  _startPopupTimer();
+});
+document.getElementById('is-back').addEventListener('click', () => {
+  document.getElementById('ideas-section').classList.remove('open');
+  _stopPopupTimer();
+});
+
+document.querySelectorAll('.is-filter').forEach(f => {
+  f.addEventListener('mouseenter', () => document.body.classList.add('hov'));
+  f.addEventListener('mouseleave', () => document.body.classList.remove('hov'));
+  f.addEventListener('click', () => {
+    isFilter = f.dataset.filter;
+    document.querySelectorAll('.is-filter').forEach(ff => ff.classList.remove('active'));
+    f.classList.add('active');
+    renderIdeasSection();
+  });
+});
+
+function renderIdeasSection() {
+  const all = lsGet();
+  let list = all;
+
+  if (isFilter !== 'all') {
+    const ci = +isFilter;
+    const zis = CATEGORIES[ci].zones;
+    list = all.filter(x => zis.includes(x.zone));
+  }
+
+  // Ordina dal più recente
+  list = [...list].sort((a,b) => (b.ts||0) - (a.ts||0));
+
+  const total = list.length;
+  document.getElementById('is-total').textContent = total > 0 ? `${total} idea${total !== 1 ? 'e' : ''}` : '';
+
+  const grid  = document.getElementById('is-grid');
+  const empty = document.getElementById('is-empty');
+
+  if (total === 0) {
+    grid.style.display  = 'none';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+  grid.style.display  = '';
+
+  grid.innerHTML = list.map(idea => {
+    const z   = ZONES[idea.zone]   || {};
+    const cat = CATEGORIES.find(c => c.zones.includes(idea.zone)) || {};
+    const isSeg = idea.type === 'segnalazione';
+    const typeStyle = isSeg
+      ? 'background:rgba(255,140,60,.12);border-color:rgba(255,140,60,.35);color:#f0a060;'
+      : 'background:rgba(201,169,110,.12);border-color:rgba(201,169,110,.35);color:var(--gold);';
+    const typeLabel = isSeg ? 'Segnalazione' : 'Idea';
+    return `
+      <div class="idea-card">
+        ${idea.photo ? `<img src="${idea.photo}" style="width:100%;border-radius:10px;max-height:140px;object-fit:cover;border:1px solid rgba(255,255,255,.1)" alt="foto">` : ''}
+        <div class="ic-tags">
+          <span style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;padding:3px 9px;border-radius:6px;border:1px solid;${typeStyle}">${typeLabel}</span>
+          <span class="ic-dot"></span>
+          <span class="ic-cat">${esc(cat.name||'')}</span>
+          <span class="ic-dot"></span>
+          <span class="ic-zone">${esc(z.name||'')}</span>
+        </div>
+        ${idea.street ? (idea.streetUrl
+          ? `<a class="ic-street" href="${idea.streetUrl}" target="_blank" rel="noopener" style="text-decoration:none;border-bottom:1px solid rgba(255,255,255,.18);transition:color .2s;color:rgba(255,255,255,.38);" onmouseover="this.style.color='rgba(255,255,255,.75)'" onmouseout="this.style.color='rgba(255,255,255,.38)'">${esc(idea.street)} ↗</a>`
+          : `<div class="ic-street">${esc(idea.street)}</div>`) : ''}
+        <div class="ic-text">${esc(idea.text)}</div>
+        <div class="ic-meta">
+          <span class="ic-author">${esc(idea.name||'Anonimo')}</span>
+          ${idea.ts ? `<span class="ic-date">${timeAgo(idea.ts)}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  gsap.from('.idea-card', { y: 30, opacity: 0, duration: 0.6, stagger: 0.05, ease: 'power3.out' });
+}
+
+function timeAgo(ts) {
+  const d = Date.now() - ts;
+  const m = Math.floor(d/60000), h = Math.floor(d/3600000), g = Math.floor(d/86400000);
+  if (m < 1)  return 'Adesso';
+  if (m < 60) return `${m} min fa`;
+  if (h < 24) return `${h}h fa`;
+  if (g < 7)  return `${g} gg fa`;
+  return new Date(ts).toLocaleDateString('it-IT',{day:'numeric',month:'short'});
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE — swipe verso il basso per chiudere i pannelli
+   ═══════════════════════════════════════════════════════════ */
+if ('ontouchstart' in window) {
+  document.querySelectorAll('.side-panel').forEach(panel => {
+    let y0 = 0;
+    panel.addEventListener('touchstart', e => {
+      y0 = e.touches[0].clientY;
+    }, { passive: true });
+    panel.addEventListener('touchend', e => {
+      const dy = e.changedTouches[0].clientY - y0;
+      if (dy > 72) {
+        if (panel.id === 'panel-ideas')  closePanels(true);
+        if (panel.id === 'panel-street') panel.classList.remove('open');
+      }
+    }, { passive: true });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BFCACHE — ripristina zone-wrap se la pagina torna dalla cache
+   ═══════════════════════════════════════════════════════════ */
+window.addEventListener('pageshow', function(e) {
+  if (!e.persisted) return;
+  closePanels(false);
+  closeCategory();
+  gsap.set('#zone-wrap', { clearProps: 'all' });
+  document.getElementById('zone-hint').style.opacity = '';
+});
+
+</script>
+
+<!-- ── Admin overlay (?admin) ─────────────────────────── -->
+<div id="adm">
+  <div id="adm-login">
+    <div id="adm-login-box">
+      <h2>Admin Panel</h2>
+      <div class="adm-sub">Trani Partecipa</div>
+      <input class="adm-field" id="adm-user" type="text" placeholder="Username" autocomplete="off">
+      <input class="adm-field" id="adm-pass" type="password" placeholder="Password">
+      <div id="adm-err"></div>
+      <button id="adm-go">Accedi</button>
+    </div>
+  </div>
+  <div id="adm-dash">
+    <div id="adm-hdr">
+      <h3>Gestione Idee</h3>
+      <div class="adm-hdr-r">
+        <span class="adm-stat" id="adm-stat">0 idee</span>
+        <button id="adm-out-btn">Esci</button>
+        <button id="adm-close-btn">✕ Chiudi</button>
+      </div>
+    </div>
+    <div id="adm-filters">
+      <button class="adm-f adm-fa" data-af="all">Tutte</button>
+      <button class="adm-f" data-af="idea">Proposte</button>
+      <button class="adm-f" data-af="segnalazione">Segnalazioni</button>
+      <button class="adm-f" data-af="c0">Trani Nord</button>
+      <button class="adm-f" data-af="c1">Trani Centro</button>
+      <button class="adm-f" data-af="c2">Trani Sud</button>
+    </div>
+    <div id="adm-body">
+      <div id="adm-grid"></div>
+      <div id="adm-empty"><p>Nessuna idea presente.<br>Le idee degli utenti appariranno qui.</p></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── Admin (?admin) ──────────────────────────────────── */
+(function(){
+  var AU='ditto', AP='matti0561', ADM_LS='trani_partecipa_v1', admFilter='all';
+  var CAT_ZONES={c0:[0,1,2],c1:[3,4],c2:[5,6]};
+  var ZONE_L=['Via Andria',"Sant'Angelo",'Via Superga','Stadio','Centro','Pozzopiano','Capirro'];
+  var CAT_L=['Trani Nord','Trani Nord','Trani Nord','Trani Centro','Trani Centro','Trani Sud','Trani Sud'];
+
+  if (!location.search.includes('admin')) return;
+
+  var elAdm   = document.getElementById('adm');
+  var elLogin = document.getElementById('adm-login');
+  var elDash  = document.getElementById('adm-dash');
+
+  elAdm.style.display = 'flex';
+  if (sessionStorage.getItem('adm_ok')==='1') showDash();
+
+  document.getElementById('adm-go').addEventListener('click', tryLogin);
+  document.getElementById('adm-pass').addEventListener('keydown', function(e){ if(e.key==='Enter') tryLogin(); });
+
+  function tryLogin(){
+    var u=document.getElementById('adm-user').value.trim();
+    var p=document.getElementById('adm-pass').value.trim();
+    if(u===AU && p===AP){
+      sessionStorage.setItem('adm_ok','1');
+      document.getElementById('adm-err').textContent='';
+      showDash();
+    } else {
+      document.getElementById('adm-err').textContent='Credenziali errate.';
+    }
+  }
+
+  function showDash(){
+    elLogin.style.display='none';
+    elDash.style.display='flex';
+    render();
+  }
+
+  document.getElementById('adm-out-btn').addEventListener('click', function(){
+    sessionStorage.removeItem('adm_ok');
+    elDash.style.display='none';
+    elLogin.style.display='flex';
+    document.getElementById('adm-user').value='';
+    document.getElementById('adm-pass').value='';
+  });
+
+  document.getElementById('adm-close-btn').addEventListener('click', function(){
+    history.replaceState(null,'',location.pathname);
+    elAdm.style.display='none';
+  });
+
+  document.querySelectorAll('.adm-f').forEach(function(b){
+    b.addEventListener('click', function(){
+      admFilter=b.dataset.af;
+      document.querySelectorAll('.adm-f').forEach(function(x){ x.classList.remove('adm-fa'); });
+      b.classList.add('adm-fa');
+      render();
+    });
+  });
+
+  window.admDelete=function(idx){
+    var raw=JSON.parse(localStorage.getItem(ADM_LS)||'[]');
+    raw.splice(idx,1);
+    localStorage.setItem(ADM_LS,JSON.stringify(raw));
+    render();
+  };
+
+  function render(){
+    var raw=JSON.parse(localStorage.getItem(ADM_LS)||'[]');
+    var all=raw.slice().reverse();
+    var list=all;
+    if(admFilter==='idea') list=all.filter(function(x){ return x.type!=='segnalazione'; });
+    else if(admFilter==='segnalazione') list=all.filter(function(x){ return x.type==='segnalazione'; });
+    else if(CAT_ZONES[admFilter]) list=all.filter(function(x){ return CAT_ZONES[admFilter].indexOf(x.zone)!==-1; });
+
+    var grid=document.getElementById('adm-grid');
+    var empty=document.getElementById('adm-empty');
+    document.getElementById('adm-stat').textContent=raw.length+(raw.length!==1?' idee':' idea');
+
+    if(!list.length){ grid.style.display='none'; empty.style.display='flex'; return; }
+    empty.style.display='none'; grid.style.display='';
+
+    grid.innerHTML=list.map(function(idea){
+      var origIdx=raw.findIndex(function(r){ return r.ts===idea.ts && r.text===idea.text; });
+      var isSeg=idea.type==='segnalazione';
+      var dateStr=idea.ts?new Date(idea.ts).toLocaleString('it-IT',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+      return '<div class="adm-card">'
+        +'<div class="adm-ct">'
+        +'<span class="adm-badge '+(isSeg?'s':'i')+'">'+(isSeg?'Segnalazione':'Proposta')+'</span>'
+        +'<span class="adm-zone">'+(CAT_L[idea.zone]||'')+' · '+(ZONE_L[idea.zone]||'')+'</span>'
+        +'<span class="adm-date">'+dateStr+'</span>'
+        +'</div>'
+        +'<div class="adm-author">'+esc(idea.name||'Anonimo')+'</div>'
+        +(idea.street?'<div class="adm-street">📍 '+esc(idea.street)+'</div>':'')
+        +'<div class="adm-text">'+esc(idea.text)+'</div>'
+        +(idea.photo?'<img src="'+idea.photo+'" style="width:100%;border-radius:8px;max-height:110px;object-fit:cover;" alt="">':'')
+        +'<button class="adm-del" onclick="admDelete('+origIdx+')">Elimina</button>'
+        +'</div>';
+    }).join('');
+  }
+})();
+</script>
+</body>
+</html>

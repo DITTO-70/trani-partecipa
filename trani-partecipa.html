@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trani — Visioni di Città</title>
+<link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet"/>
+<script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --white: #f5f2ec;
+  --gold: #c9a96e;
+  --ink: #100e0b;
+  --glass: rgba(245,242,236,0.06);
+  --glass-border: rgba(245,242,236,0.14);
+}
+
+html, body { width:100%; height:100%; overflow:hidden; background:var(--ink); font-family:'Cormorant Garamond',serif; cursor:none; }
+
+/* ── Cursor ─────────────────────────────────────────── */
+#cur { position:fixed; width:8px; height:8px; background:var(--gold); border-radius:50%; pointer-events:none; z-index:9999; transform:translate(-50%,-50%); transition:width .25s,height .25s; }
+#cur-ring { position:fixed; width:30px; height:30px; border:1px solid rgba(201,169,110,.45); border-radius:50%; pointer-events:none; z-index:9998; transform:translate(-50%,-50%); transition:width .3s,height .3s; }
+body.hov #cur { width:13px; height:13px; background:var(--white); }
+body.hov #cur-ring { width:46px; height:46px; }
+
+/* ── Map ─────────────────────────────────────────────── */
+#map { position:fixed; inset:0; z-index:0; }
+.maplibregl-ctrl-attrib, .maplibregl-ctrl-logo { display:none !important; }
+
+/* ── Overlays ────────────────────────────────────────── */
+#vig { position:fixed; inset:0; z-index:1; background:radial-gradient(ellipse at center, transparent 25%, rgba(16,14,11,.65) 100%); pointer-events:none; }
+#top-fade { position:fixed; top:0;left:0;right:0; height:160px; background:linear-gradient(to bottom,rgba(16,14,11,.8) 0%,transparent 100%); z-index:2; pointer-events:none; }
+#bot-fade { position:fixed; bottom:0;left:0;right:0; height:260px; background:linear-gradient(to top,rgba(16,14,11,.92) 0%,transparent 100%); z-index:2; pointer-events:none; }
+
+/* ── Header ──────────────────────────────────────────── */
+#hdr { position:fixed; top:0;left:0;right:0; z-index:10; display:flex; justify-content:space-between; align-items:flex-start; padding:34px 48px 0; }
+.htitle { font-size:12px; letter-spacing:.35em; text-transform:uppercase; color:var(--white); opacity:.65; }
+.hsub { font-style:italic; font-size:11px; letter-spacing:.1em; color:var(--gold); opacity:.8; margin-top:4px; }
+.hright { text-align:right; font-size:11px; letter-spacing:.18em; color:var(--white); opacity:.35; text-transform:uppercase; line-height:1.7; }
+
+/* ── Ideas total counter ─────────────────────────────── */
+#ideas-total { position:fixed; bottom:28px; right:42px; z-index:20; font-size:10px; letter-spacing:.2em; color:var(--white); opacity:.25; text-transform:uppercase; text-align:right; transition:opacity .4s; pointer-events:none; }
+#ideas-total b { color:var(--gold); font-weight:400; opacity:.9; }
+
+/* ── Arc UI ──────────────────────────────────────────── */
+#arc-ui { position:fixed; bottom:52px; left:0; right:0; z-index:20; display:flex; flex-direction:column; align-items:center; }
+
+#zlabel {
+  font-weight:300; font-size:clamp(26px,3.8vw,50px); letter-spacing:.06em;
+  color:var(--white); margin-bottom:24px; min-height:62px; text-align:center;
+  opacity:0; transform:translateY(10px); transition:opacity .45s,transform .45s;
+  pointer-events:none;
+}
+#zlabel.vis { opacity:1; transform:translateY(0); }
+#zlabel small { display:block; font-style:italic; font-size:.44em; letter-spacing:.18em; color:var(--gold); margin-top:3px; text-transform:uppercase; }
+
+#arc-wrap { width:min(720px,88vw); position:relative; }
+#arc-svg { width:100%; overflow:visible; }
+
+/* SVG dot count labels */
+.d-count { font-size:8px; fill:rgba(201,169,110,.8); font-family:sans-serif; transition:opacity .3s; }
+
+#inst { margin-top:20px; font-style:italic; font-size:12px; letter-spacing:.14em; color:var(--white); opacity:.32; text-align:center; transition:opacity .4s; }
+
+/* ── Side Panel ──────────────────────────────────────── */
+#panel {
+  position:fixed; right:0; top:0; bottom:0;
+  width:min(390px,92vw); z-index:30;
+  background:rgba(12,10,8,.96);
+  border-left:1px solid var(--glass-border);
+  backdrop-filter:blur(20px);
+  transform:translateX(100%);
+  transition:transform .65s cubic-bezier(.16,1,.3,1);
+  display:flex; flex-direction:column;
+  padding:52px 38px 38px;
+  overflow-y:auto;
+  scrollbar-width:none;
+}
+#panel::-webkit-scrollbar { display:none; }
+#panel.open { transform:translateX(0); }
+
+#pclose { position:absolute; top:24px; right:28px; background:none; border:none; color:var(--white); opacity:.38; font-size:20px; cursor:none; transition:opacity .2s; }
+#pclose:hover { opacity:1; }
+#pzone { font-style:italic; font-size:11px; letter-spacing:.24em; text-transform:uppercase; color:var(--gold); margin-bottom:7px; }
+#ptitle { font-weight:300; font-size:26px; letter-spacing:.04em; color:var(--white); margin-bottom:26px; line-height:1.25; }
+.pdiv { width:36px; height:1px; background:var(--gold); opacity:.38; margin-bottom:24px; }
+#pinstr { font-size:14px; line-height:1.75; color:var(--white); opacity:.5; margin-bottom:28px; }
+
+/* ── Zone ideas list ─────────────────────────────────── */
+#pideas { margin-bottom:24px; display:none; }
+.ideas-title { font-size:9px; letter-spacing:.22em; text-transform:uppercase; color:var(--gold); opacity:.55; margin-bottom:14px; }
+.idea-item { padding:10px 0; border-bottom:1px solid rgba(245,242,236,.07); }
+.idea-item:last-child { border-bottom:none; }
+.idea-author { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); opacity:.7; margin-bottom:4px; }
+.idea-body { font-size:13px; color:var(--white); opacity:.55; line-height:1.65; font-style:italic; }
+
+/* ── Form ────────────────────────────────────────────── */
+.ifield {
+  background:var(--glass); border:1px solid var(--glass-border); border-radius:2px;
+  padding:14px 16px; color:var(--white); font-family:'Cormorant Garamond',serif;
+  font-size:15px; resize:none; width:100%; margin-bottom:10px; transition:border-color .3s;
+}
+.ifield::placeholder { color:rgba(245,242,236,.28); font-style:italic; }
+.ifield:focus { outline:none; border-color:var(--gold); background:rgba(201,169,110,.04); }
+#itxt { height:110px; }
+
+#sbtn {
+  width:100%; padding:15px; background:transparent;
+  border:1px solid var(--gold); color:var(--gold);
+  font-family:'Cormorant Garamond',serif; font-size:12px;
+  letter-spacing:.28em; text-transform:uppercase;
+  cursor:none; transition:background .3s,color .3s; margin-top:6px;
+}
+#sbtn:hover { background:var(--gold); color:var(--ink); }
+
+#ok { display:none; flex-direction:column; align-items:center; justify-content:center; flex:1; text-align:center; padding:40px 0; }
+#ok .star { font-size:34px; color:var(--gold); margin-bottom:18px; }
+#ok p { font-size:17px; font-style:italic; color:var(--white); opacity:.65; line-height:1.7; }
+#ok .ok-note { font-size:11px; letter-spacing:.15em; text-transform:uppercase; color:var(--gold); opacity:.5; margin-top:16px; }
+
+/* ── Loader ──────────────────────────────────────────── */
+#load { position:fixed; inset:0; z-index:200; background:var(--ink); display:flex; flex-direction:column; align-items:center; justify-content:center; transition:opacity .8s; }
+#load.gone { opacity:0; pointer-events:none; }
+.lcity { font-weight:300; font-size:clamp(52px,9vw,100px); letter-spacing:.12em; color:var(--white); }
+.lsub { font-style:italic; font-size:13px; letter-spacing:.22em; color:var(--gold); opacity:.7; margin-top:4px; margin-bottom:44px; }
+.lbar-wrap { width:180px; height:1px; background:rgba(245,242,236,.1); }
+.lbar { height:100%; background:var(--gold); width:0; transition:width 1.2s ease; }
+
+/* ── Mobile ──────────────────────────────────────────── */
+@media (max-width:600px) {
+  #hdr { padding:24px 24px 0; }
+  .hright { display:none; }
+  #inst { font-size:11px; }
+}
+</style>
+</head>
+<body>
+
+<div id="cur"></div>
+<div id="cur-ring"></div>
+
+<!-- ── Loader ──────────────────────────── -->
+<div id="load">
+  <div class="lcity">Trani</div>
+  <div class="lsub">Puglia · Italia</div>
+  <div class="lbar-wrap"><div class="lbar" id="lbar"></div></div>
+</div>
+
+<!-- ── Map + overlays ──────────────────── -->
+<div id="map"></div>
+<div id="vig"></div>
+<div id="top-fade"></div>
+<div id="bot-fade"></div>
+
+<!-- ── Header ──────────────────────────── -->
+<div id="hdr">
+  <div>
+    <div class="htitle">Trani Partecipa</div>
+    <div class="hsub">Immagina la tua città</div>
+  </div>
+  <div class="hright">Trani · Puglia<br>41°16′N &nbsp;16°25′E</div>
+</div>
+
+<!-- ── Ideas total ─────────────────────── -->
+<div id="ideas-total"><b id="total-count">0</b> idee condivise</div>
+
+<!-- ── Arc UI ──────────────────────────── -->
+<div id="arc-ui">
+  <div id="zlabel"></div>
+  <div id="arc-wrap">
+    <svg id="arc-svg" viewBox="0 0 720 110" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="gw">
+          <feGaussianBlur stdDeviation="2.5" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+
+      <!-- Arc lines -->
+      <path d="M 70 88 Q 260 18 360 16 Q 460 18 650 88" fill="none" stroke="rgba(245,242,236,.22)" stroke-width="1"/>
+      <path d="M 70 88 Q 260 18 360 16 Q 460 18 650 88" fill="none" stroke="rgba(201,169,110,.07)" stroke-width="3" filter="url(#gw)"/>
+
+      <!-- Dot 0 · Pozzapiano -->
+      <g class="dg" data-i="0" transform="translate(70,88)" style="cursor:none">
+        <circle r="22" fill="transparent"/>
+        <circle class="d-ring" r="9" fill="none" stroke="rgba(245,242,236,.2)" stroke-width="1"/>
+        <circle class="d-inner" r="4" fill="rgba(245,242,236,.65)"/>
+        <circle class="d-pulse" r="4" fill="none" stroke="rgba(245,242,236,.25)" stroke-width="1"/>
+        <text class="d-count" x="0" y="-18" text-anchor="middle"></text>
+      </g>
+
+      <!-- Dot 1 · Via Corato -->
+      <g class="dg" data-i="1" transform="translate(230,30)" style="cursor:none">
+        <circle r="22" fill="transparent"/>
+        <circle class="d-ring" r="9" fill="none" stroke="rgba(245,242,236,.2)" stroke-width="1"/>
+        <circle class="d-inner" r="4" fill="rgba(245,242,236,.65)"/>
+        <circle class="d-pulse" r="4" fill="none" stroke="rgba(245,242,236,.25)" stroke-width="1"/>
+        <text class="d-count" x="0" y="-18" text-anchor="middle"></text>
+      </g>
+
+      <!-- Dot 2 · Centro -->
+      <g class="dg" data-i="2" transform="translate(490,30)" style="cursor:none">
+        <circle r="22" fill="transparent"/>
+        <circle class="d-ring" r="9" fill="none" stroke="rgba(245,242,236,.2)" stroke-width="1"/>
+        <circle class="d-inner" r="4" fill="rgba(245,242,236,.65)"/>
+        <circle class="d-pulse" r="4" fill="none" stroke="rgba(245,242,236,.25)" stroke-width="1"/>
+        <text class="d-count" x="0" y="-18" text-anchor="middle"></text>
+      </g>
+
+      <!-- Dot 3 · Via Andria -->
+      <g class="dg" data-i="3" transform="translate(650,88)" style="cursor:none">
+        <circle r="22" fill="transparent"/>
+        <circle class="d-ring" r="9" fill="none" stroke="rgba(245,242,236,.2)" stroke-width="1"/>
+        <circle class="d-inner" r="4" fill="rgba(245,242,236,.65)"/>
+        <circle class="d-pulse" r="4" fill="none" stroke="rgba(245,242,236,.25)" stroke-width="1"/>
+        <text class="d-count" x="0" y="-18" text-anchor="middle"></text>
+      </g>
+    </svg>
+  </div>
+  <div id="inst">Passa il cursore sui punti · Clicca per volare sulla zona</div>
+</div>
+
+<!-- ── Side Panel ──────────────────────── -->
+<div id="panel">
+  <button id="pclose">✕</button>
+  <div id="pzone"></div>
+  <div id="ptitle"></div>
+  <div class="pdiv"></div>
+
+  <!-- Recent ideas for this zone -->
+  <div id="pideas"></div>
+
+  <div id="pinstr">Hai un'idea per questa zona?<br>Condividila con la città.</div>
+  <div id="pform">
+    <input type="text" class="ifield" id="iname" placeholder="Il tuo nome (opzionale)">
+    <textarea class="ifield" id="itxt" placeholder="Descrivi la tua idea per questo quartiere…"></textarea>
+    <button id="sbtn">Invia la tua idea</button>
+  </div>
+  <div id="ok">
+    <div class="star">✦</div>
+    <p>Grazie!<br>La tua idea è stata registrata.<br>Insieme costruiamo Trani.</p>
+    <div class="ok-note">La voce della città cresce</div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   API — punta al backend Express.
+   In produzione lascia stringa vuota (same origin).
+   In sviluppo locale imposta l'URL del tuo server.
+   ═══════════════════════════════════════════════════════ */
+const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://localhost:3000'
+  : '';
+
+/* ═══════════════════════════════════════════════════════
+   ZONE DATA — lat/lng + cinematic camera per flyTo
+   ═══════════════════════════════════════════════════════ */
+const ZONES = [
+  {
+    name: "Pozzapiano",
+    sub: "Zona residenziale nord",
+    lat: 41.2820, lng: 16.4050,
+    zoom: 16, pitch: 52, bearing: -15
+  },
+  {
+    name: "Via Corato",
+    sub: "Quartiere Stadio",
+    lat: 41.2775, lng: 16.4125,
+    zoom: 16, pitch: 58, bearing: 25
+  },
+  {
+    name: "Centro",
+    sub: "Cuore storico di Trani",
+    lat: 41.2810, lng: 16.4185,
+    zoom: 16.5, pitch: 62, bearing: -40
+  },
+  {
+    name: "Via Andria",
+    sub: "Via Superga · Sant'Angelo",
+    lat: 41.2850, lng: 16.4255,
+    zoom: 16, pitch: 50, bearing: 30
+  }
+];
+
+const HOME = { lat: 41.2810, lng: 16.4170, zoom: 14, pitch: 42, bearing: 0 };
+
+/* ═══════════════════════════════════════════════════════
+   MAPLIBRE GL JS — satellite 3D
+   ═══════════════════════════════════════════════════════ */
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    sources: {
+      satellite: {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        attribution: '© Esri'
+      }
+    },
+    layers: [
+      { id: 'bg', type: 'background', paint: { 'background-color': '#100e0b' } },
+      { id: 'satellite', type: 'raster', source: 'satellite', paint: { 'raster-opacity': 0.92 } }
+    ]
+  },
+  center: [HOME.lng, HOME.lat],
+  zoom: HOME.zoom,
+  pitch: HOME.pitch,
+  bearing: HOME.bearing,
+  antialias: true,
+  interactive: false   // purely cinematic — no user drag/zoom
+});
+
+/* ═══════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════ */
+let isFlying    = false;
+let panelOpen   = false;
+let activeZone  = null;   // index 0–3 or null
+let rotRafId    = null;
+let rotLastTs   = null;
+const ROT_DEG_PER_MIN = 3.5;   // very slow idle rotation
+
+/* ═══════════════════════════════════════════════════════
+   IDLE ROTATION
+   ═══════════════════════════════════════════════════════ */
+function startRotation() {
+  cancelRotation();
+  rotLastTs = null;
+  function step(ts) {
+    if (!isFlying && !panelOpen) {
+      if (rotLastTs === null) rotLastTs = ts;
+      const dt = ts - rotLastTs;
+      rotLastTs = ts;
+      map.setBearing((map.getBearing() + dt * ROT_DEG_PER_MIN / 60000) % 360);
+    } else {
+      rotLastTs = null;
+    }
+    rotRafId = requestAnimationFrame(step);
+  }
+  rotRafId = requestAnimationFrame(step);
+}
+
+function cancelRotation() {
+  if (rotRafId) { cancelAnimationFrame(rotRafId); rotRafId = null; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   LOADER + MAP READY
+   ═══════════════════════════════════════════════════════ */
+map.on('load', () => {
+  setTimeout(() => { document.getElementById('lbar').style.width = '100%'; }, 80);
+  setTimeout(() => {
+    const load = document.getElementById('load');
+    load.classList.add('gone');
+    setTimeout(() => { load.style.display = 'none'; }, 850);
+  }, 1600);
+  startRotation();
+});
+
+/* ═══════════════════════════════════════════════════════
+   FLY-TO  (3D cinematic, ~3 sec)
+   ═══════════════════════════════════════════════════════ */
+function flyTo(z, idx) {
+  isFlying = true;
+  cancelRotation();
+  map.flyTo({
+    center:   [z.lng, z.lat],
+    zoom:     z.zoom,
+    pitch:    z.pitch,
+    bearing:  z.bearing,
+    duration: 2800,
+    essential: true
+  });
+  setTimeout(() => {
+    isFlying = false;
+    openPanel(z, idx);
+  }, 2900);
+}
+
+function flyHome() {
+  isFlying = true;
+  map.flyTo({
+    center:   [HOME.lng, HOME.lat],
+    zoom:     HOME.zoom,
+    pitch:    HOME.pitch,
+    bearing:  HOME.bearing,
+    duration: 2300,
+    essential: true
+  });
+  setTimeout(() => {
+    isFlying = false;
+    startRotation();
+  }, 2400);
+}
+
+/* ═══════════════════════════════════════════════════════
+   IDEAS — API + localStorage fallback
+   ═══════════════════════════════════════════════════════ */
+const LS_KEY = 'trani_partecipa_v1';
+
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// ── LocalStorage helpers (fallback) ───────────────────
+function lsGetIdeas() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch { return []; }
+}
+function lsSaveIdea(zoneIdx, name, text) {
+  const list = lsGetIdeas();
+  list.push({ zone: zoneIdx, name: name || 'Anonimo', text, ts: Date.now() });
+  localStorage.setItem(LS_KEY, JSON.stringify(list));
+}
+
+// ── API: load zone ideas ───────────────────────────────
+async function fetchZoneIdeas(zoneIdx, limit = 3) {
+  try {
+    const res = await fetch(`${API_URL}/api/ideas?zone=${zoneIdx}&limit=${limit}`);
+    if (!res.ok) throw new Error('non-ok');
+    return await res.json();   // { ideas: [...], total: N }
+  } catch {
+    // Fallback: read from localStorage
+    const all = lsGetIdeas().filter(x => x.zone === zoneIdx).reverse().slice(0, limit);
+    return { ideas: all.map(x => ({ name: x.name, text: x.text, created_at: null })), total: all.length };
+  }
+}
+
+// ── API: submit idea ───────────────────────────────────
+async function submitIdea(zoneIdx, name, text) {
+  try {
+    const res = await fetch(`${API_URL}/api/ideas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zone: zoneIdx, name, text })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'non-ok');
+    }
+    return true;
+  } catch {
+    // Fallback: save locally
+    lsSaveIdea(zoneIdx, name, text);
+    return true;
+  }
+}
+
+// ── API: load stats (dot counts + total) ──────────────
+async function loadStats() {
+  let stats = [];
+  try {
+    const res = await fetch(`${API_URL}/api/stats`);
+    if (!res.ok) throw new Error('non-ok');
+    const data = await res.json();
+    stats = data.stats;
+  } catch {
+    // Fallback: count from localStorage
+    const all = lsGetIdeas();
+    stats = [0, 1, 2, 3].map(z => ({ zone: z, count: all.filter(x => x.zone === z).length }));
+  }
+  applyStats(stats);
+}
+
+function applyStats(stats) {
+  const byZone = {};
+  stats.forEach(s => { byZone[s.zone] = s.count; });
+  let total = 0;
+  document.querySelectorAll('.dg').forEach(dot => {
+    const i = +dot.dataset.i;
+    const c = byZone[i] || 0;
+    total += c;
+    const el = dot.querySelector('.d-count');
+    if (el) el.textContent = c > 0 ? c : '';
+  });
+  document.getElementById('total-count').textContent = total;
+  document.getElementById('ideas-total').style.opacity = total > 0 ? '.35' : '0';
+}
+
+/* ═══════════════════════════════════════════════════════
+   PANEL
+   ═══════════════════════════════════════════════════════ */
+async function openPanel(z, idx) {
+  panelOpen = true;
+
+  document.getElementById('pzone').textContent  = z.sub;
+  document.getElementById('ptitle').textContent = z.name;
+  document.getElementById('pform').style.display = '';
+  document.getElementById('ok').style.display    = 'none';
+  document.getElementById('iname').value = '';
+  document.getElementById('itxt').value  = '';
+  document.getElementById('itxt').style.borderColor = '';
+
+  // Show loading state in ideas section
+  const el = document.getElementById('pideas');
+  el.innerHTML = '<div class="ideas-title" style="opacity:.3">Caricamento…</div>';
+  el.style.display = '';
+  document.getElementById('panel').classList.add('open');
+
+  // Fetch recent ideas for this zone
+  const { ideas, total } = await fetchZoneIdeas(idx, 3);
+
+  if (ideas.length) {
+    const countLabel = total > 3 ? ` · ${total} totali` : '';
+    el.innerHTML =
+      `<div class="ideas-title">Idee condivise${countLabel}</div>` +
+      ideas.map(r =>
+        `<div class="idea-item">
+           <div class="idea-author">${esc(r.name)}</div>
+           <div class="idea-body">${esc(r.text)}</div>
+         </div>`
+      ).join('');
+  } else {
+    el.innerHTML = '<div class="ideas-title" style="opacity:.25">Nessuna idea ancora — sii il primo</div>';
+  }
+}
+
+function closePanel() {
+  document.getElementById('panel').classList.remove('open');
+  panelOpen = false;
+  activeZone = null;
+  flyHome();
+  document.getElementById('zlabel').classList.remove('vis');
+  document.getElementById('inst').style.opacity = '.32';
+}
+
+document.getElementById('pclose').addEventListener('click', closePanel);
+
+/* ═══════════════════════════════════════════════════════
+   SUBMIT
+   ═══════════════════════════════════════════════════════ */
+document.getElementById('sbtn').addEventListener('click', async () => {
+  const txt  = document.getElementById('itxt').value.trim();
+  const name = document.getElementById('iname').value.trim();
+
+  if (!txt) {
+    document.getElementById('itxt').style.borderColor = 'rgba(201,169,110,.9)';
+    return;
+  }
+
+  // Disable button during submit
+  const btn = document.getElementById('sbtn');
+  btn.disabled = true;
+  btn.textContent = 'Invio…';
+
+  await submitIdea(activeZone, name, txt);
+  await loadStats();   // refresh counts
+
+  document.getElementById('pform').style.display = 'none';
+  document.getElementById('ok').style.display    = 'flex';
+
+  btn.disabled = false;
+  btn.textContent = 'Invia la tua idea';
+});
+
+/* ═══════════════════════════════════════════════════════
+   ARC DOTS — hover + click
+   ═══════════════════════════════════════════════════════ */
+document.querySelectorAll('.dg').forEach(dot => {
+  const idx   = +dot.dataset.i;
+  const z     = ZONES[idx];
+  const inner = dot.querySelector('.d-inner');
+  const dr    = dot.querySelector('.d-ring');
+  const zlabel = document.getElementById('zlabel');
+  const inst   = document.getElementById('inst');
+
+  dot.addEventListener('mouseenter', () => {
+    document.body.classList.add('hov');
+    inner.setAttribute('r', '5.5');
+    inner.setAttribute('fill', 'rgba(245,242,236,1)');
+    dr.setAttribute('r', '11');
+    dr.setAttribute('stroke', 'rgba(201,169,110,.55)');
+    zlabel.innerHTML = z.name + '<small>' + z.sub + '</small>';
+    zlabel.classList.add('vis');
+    inst.style.opacity = '0';
+  });
+
+  dot.addEventListener('mouseleave', () => {
+    document.body.classList.remove('hov');
+    inner.setAttribute('r', '4');
+    inner.setAttribute('fill', 'rgba(245,242,236,.65)');
+    dr.setAttribute('r', '9');
+    dr.setAttribute('stroke', 'rgba(245,242,236,.2)');
+    if (activeZone === null) {
+      zlabel.classList.remove('vis');
+      inst.style.opacity = '.32';
+    }
+  });
+
+  dot.addEventListener('click', () => {
+    if (isFlying || panelOpen) return;
+    activeZone = idx;
+    flyTo(z, idx);
+  });
+});
+
+/* ═══════════════════════════════════════════════════════
+   PULSE ANIMATION
+   ═══════════════════════════════════════════════════════ */
+document.querySelectorAll('.d-pulse').forEach(p => {
+  let s = 1 + Math.random() * 1.1, grow = Math.random() > .5;   // stagger start
+  setInterval(() => {
+    s += grow ? .055 : -.055;
+    if (s > 2.1) grow = false;
+    if (s < 1)   grow = true;
+    p.setAttribute('r', 4 * s);
+    p.style.opacity = ((2.1 - s) / 1.1 * .38).toString();
+  }, 38);
+});
+
+/* ═══════════════════════════════════════════════════════
+   CUSTOM CURSOR (lagging ring)
+   ═══════════════════════════════════════════════════════ */
+const cur  = document.getElementById('cur');
+const ring = document.getElementById('cur-ring');
+let mx = 0, my = 0, rx = 0, ry = 0;
+
+document.addEventListener('mousemove', e => {
+  mx = e.clientX; my = e.clientY;
+  cur.style.left = mx + 'px';
+  cur.style.top  = my + 'px';
+});
+
+(function tick() {
+  rx += (mx - rx) * .13;
+  ry += (my - ry) * .13;
+  ring.style.left = rx + 'px';
+  ring.style.top  = ry + 'px';
+  requestAnimationFrame(tick);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════════════════ */
+loadStats();
+</script>
+</body>
+</html>

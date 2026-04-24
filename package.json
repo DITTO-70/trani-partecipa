@@ -1,0 +1,10 @@
+{
+  "name": "trani-partecipa",
+  "version": "2.0.0",
+  "description": "Trani Partecipa — frontend dev server. Backend lives in trani-backend/",
+  "scripts": {
+    "start": "npx http-server . -p 8080 -o /index.html --cors -c-1 --silent",
+    "dev":   "npx http-server . -p 8080 -o /index.html --cors -c-1"
+  },
+  "engines": { "node": ">=16" }
+}

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Trani Partecipa</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--w:#fdfdfc;--g:#c6ad81;--k:#080808;--bg:#0d0b09;--card:rgba(20,17,14,.95);--br:rgba(255,255,255,.11);--ease:cubic-bezier(.16,1,.3,1)}
+html,body{min-height:100vh;background:var(--bg);font-family:'Inter',sans-serif;color:var(--w)}
+
+/* LOGIN */
+#login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:10}
+.box{width:min(360px,92vw);background:var(--card);border:1px solid var(--br);border-radius:20px;padding:40px 30px;display:flex;flex-direction:column;gap:16px}
+.box h1{font-family:'Playfair Display',serif;font-weight:400;font-size:26px;text-align:center}
+.box .sub{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--g);opacity:.75;text-align:center}
+.field{background:rgba(255,255,255,.05);border:1px solid var(--br);border-radius:8px;padding:12px 14px;color:var(--w);font-family:'Inter',sans-serif;font-size:14px;width:100%;transition:border-color .3s}
+.field:focus{outline:none;border-color:rgba(255,255,255,.35)}
+.field::placeholder{color:rgba(255,255,255,.22);font-style:italic}
+.btn-login{width:100%;padding:14px;background:var(--w);border:1px solid var(--w);border-radius:8px;color:var(--k);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:background .3s,color .3s}
+.btn-login:hover{background:transparent;color:var(--w)}
+#err{font-size:11px;color:rgba(255,100,100,.9);text-align:center;min-height:15px}
+
+/* DASH */
+#dash{display:none;min-height:100vh;flex-direction:column}
+#dh{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;padding:18px 36px;background:rgba(13,11,9,.95);border-bottom:1px solid var(--br);backdrop-filter:blur(12px)}
+.dh-l{display:flex;align-items:center;gap:12px}
+.dh-logo{width:30px;height:30px;border-radius:50%;object-fit:contain;opacity:.75}
+.dh-title{font-family:'Playfair Display',serif;font-size:20px;font-weight:400}
+.dh-sub{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--g);opacity:.7;margin-top:2px}
+.dh-r{display:flex;gap:8px;align-items:center}
+#stat{padding:5px 13px;border:1px solid rgba(198,173,129,.3);border-radius:6px;font-size:11px;color:var(--g);letter-spacing:.06em}
+.btn-sm{padding:7px 16px;background:transparent;border-radius:6px;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:all .25s}
+#btn-out{border:1px solid rgba(255,80,70,.35);color:rgba(255,110,100,.8)}
+#btn-out:hover{background:rgba(255,80,70,.15);border-color:rgba(255,80,70,.8);color:#fff}
+#filters{display:flex;gap:6px;padding:14px 36px;border-bottom:1px solid var(--br);overflow-x:auto;scrollbar-width:none;flex-wrap:wrap}
+.f{padding:6px 14px;border-radius:6px;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.42);border:1px solid transparent;cursor:pointer;background:none;white-space:nowrap;transition:all .2s}
+.f:hover{background:rgba(255,255,255,.06);color:#fff;border-color:var(--br)}
+.f.on{background:rgba(198,173,129,.10);border-color:var(--g);color:var(--g)}
+#body{padding:24px 36px 60px;flex:1}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+#empty{display:none;flex-direction:column;align-items:center;padding:80px 20px;gap:12px;text-align:center}
+#empty p{font-family:'Playfair Display',serif;font-style:italic;font-size:16px;color:rgba(255,255,255,.28);line-height:1.7}
+#empty small{font-size:11px;color:rgba(255,255,255,.2);letter-spacing:.06em}
+.card{background:var(--card);border:1px solid var(--br);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:8px;transition:border-color .2s}
+.card:hover{border-color:rgba(255,255,255,.2)}
+.ct{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.badge{padding:2px 9px;border-radius:5px;font-size:9px;letter-spacing:.16em;text-transform:uppercase;border:1px solid}
+.badge.i{background:rgba(198,173,129,.1);border-color:rgba(198,173,129,.4);color:var(--g)}
+.badge.s{background:rgba(255,140,60,.1);border-color:rgba(255,140,60,.4);color:#f0a060}
+.zone{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.35)}
+.date{font-size:9px;color:rgba(255,255,255,.22);margin-left:auto}
+.author{font-size:11px;font-weight:500;color:rgba(255,255,255,.5)}
+.street{font-size:11px;color:rgba(255,255,255,.35);padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.08)}
+.text{font-family:'Playfair Display',serif;font-style:italic;font-size:13px;line-height:1.6;color:rgba(255,255,255,.72);flex:1}
+.btn-del{align-self:flex-end;margin-top:4px;padding:6px 16px;border-radius:6px;cursor:pointer;background:transparent;border:1px solid rgba(255,80,70,.35);color:rgba(255,110,100,.75);font-size:9px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;transition:all .2s}
+.btn-del:hover{background:rgba(255,80,70,.15);border-color:rgba(255,80,70,.8);color:#fff}
+@media(max-width:600px){#dh,#filters,#body{padding-left:16px;padding-right:16px}#grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="box">
+    <h1>Trani Partecipa</h1>
+    <div class="sub">Pannello Amministratore</div>
+    <input class="field" id="u" type="text" placeholder="Username" autocomplete="off">
+    <input class="field" id="p" type="password" placeholder="Password">
+    <div id="err"></div>
+    <button class="btn-login" id="btn-in">Accedi</button>
+  </div>
+</div>
+
+<div id="dash">
+  <div id="dh">
+    <div class="dh-l">
+      <img class="dh-logo" src="foto_elezione/fotoLista.png" alt="">
+      <div><div class="dh-title">Admin Panel</div><div class="dh-sub">Trani Partecipa</div></div>
+    </div>
+    <div class="dh-r">
+      <span id="stat">0 idee</span>
+      <button class="btn-sm" id="btn-out">Esci</button>
+    </div>
+  </div>
+  <div id="filters">
+    <button class="f on" data-f="all">Tutte</button>
+    <button class="f" data-f="idea">Proposte</button>
+    <button class="f" data-f="segnalazione">Segnalazioni</button>
+    <button class="f" data-f="c0">Trani Nord</button>
+    <button class="f" data-f="c1">Trani Centro</button>
+    <button class="f" data-f="c2">Trani Sud</button>
+  </div>
+  <div id="body">
+    <div id="grid"></div>
+    <div id="empty">
+      <p>Nessuna idea presente.</p>
+      <small>Assicurati di aprire questa pagina dallo stesso server usato per il sito principale.</small>
+    </div>
+  </div>
+</div>
+
+<script>
+var KEY  = 'trani_partecipa_v1';
+var AU   = 'ditto', AP = 'matti0561';
+var fil  = 'all';
+var CZ   = {c0:[0,1,2], c1:[3,4], c2:[5,6]};
+var ZN   = ['Via Andria',"Sant'Angelo",'Via Superga','Stadio','Centro','Pozzopiano','Capirro'];
+var CN   = ['Trani Nord','Trani Nord','Trani Nord','Trani Centro','Trani Centro','Trani Sud','Trani Sud'];
+
+function esc(s){ var d=document.createElement('div'); d.textContent=String(s||''); return d.innerHTML; }
+function getData(){ try{ return JSON.parse(localStorage.getItem(KEY)||'[]'); }catch(e){ return []; } }
+function saveData(d){ localStorage.setItem(KEY, JSON.stringify(d)); }
+
+/* LOGIN */
+if(sessionStorage.getItem('adm')==='1') showDash();
+
+document.getElementById('btn-in').addEventListener('click', login);
+document.getElementById('p').addEventListener('keydown', function(e){ if(e.key==='Enter') login(); });
+
+function login(){
+  var u=document.getElementById('u').value.trim();
+  var p=document.getElementById('p').value.trim();
+  if(u===AU && p===AP){
+    sessionStorage.setItem('adm','1');
+    document.getElementById('err').textContent='';
+    showDash();
+  } else {
+    document.getElementById('err').textContent='Credenziali errate.';
+  }
+}
+
+function showDash(){
+  document.getElementById('login').style.display='none';
+  document.getElementById('dash').style.display='flex';
+  render();
+}
+
+document.getElementById('btn-out').addEventListener('click', function(){
+  sessionStorage.removeItem('adm');
+  document.getElementById('dash').style.display='none';
+  document.getElementById('login').style.display='flex';
+  document.getElementById('u').value='';
+  document.getElementById('p').value='';
+});
+
+/* FILTERS */
+document.querySelectorAll('.f').forEach(function(b){
+  b.addEventListener('click', function(){
+    fil=b.dataset.f;
+    document.querySelectorAll('.f').forEach(function(x){ x.classList.remove('on'); });
+    b.classList.add('on');
+    render();
+  });
+});
+
+/* DELETE */
+window.del=function(idx){
+  var d=getData();
+  d.splice(idx,1);
+  saveData(d);
+  render();
+};
+
+/* RENDER */
+function render(){
+  var raw=getData();
+  var all=raw.slice().reverse();
+  var list=all;
+
+  if(fil==='idea')          list=all.filter(function(x){ return x.type!=='segnalazione'; });
+  else if(fil==='segnalazione') list=all.filter(function(x){ return x.type==='segnalazione'; });
+  else if(CZ[fil])          list=all.filter(function(x){ return CZ[fil].indexOf(x.zone)!==-1; });
+
+  document.getElementById('stat').textContent=raw.length+(raw.length===1?' idea':' idee');
+
+  var grid =document.getElementById('grid');
+  var empty=document.getElementById('empty');
+
+  if(!list.length){ grid.style.display='none'; empty.style.display='flex'; return; }
+  empty.style.display='none'; grid.style.display='';
+
+  grid.innerHTML=list.map(function(idea){
+    var oi=raw.findIndex(function(r){ return r.ts===idea.ts && r.text===idea.text; });
+    var seg=idea.type==='segnalazione';
+    var dt=idea.ts?new Date(idea.ts).toLocaleString('it-IT',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+    return '<div class="card">'
+      +'<div class="ct">'
+      +'<span class="badge '+(seg?'s':'i')+'">'+(seg?'Segnalazione':'Proposta')+'</span>'
+      +'<span class="zone">'+(CN[idea.zone]||'')+' · '+(ZN[idea.zone]||'')+'</span>'
+      +'<span class="date">'+dt+'</span>'
+      +'</div>'
+      +'<div class="author">'+esc(idea.name||'Anonimo')+'</div>'
+      +(idea.street?'<div class="street">📍 '+esc(idea.street)+'</div>':'')
+      +'<div class="text">'+esc(idea.text)+'</div>'
+      +(idea.photo?'<img src="'+idea.photo+'" style="width:100%;border-radius:8px;max-height:110px;object-fit:cover" alt="">':'')
+      +'<button class="btn-del" onclick="del('+oi+')">Elimina</button>'
+      +'</div>';
+  }).join('');
+}
+</script>
+</body>
+</html>
