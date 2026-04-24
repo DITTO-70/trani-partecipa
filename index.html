@@ -954,7 +954,8 @@ map.on('load', () => {
       
       // UI Entrance Animations
       gsap.from('#hdr', { y: -20, opacity: 0, duration: 1.4, ease: 'power2.out' });
-      gsap.from('#zone-wrap', { y: 20, opacity: 0, duration: 1.4, ease: 'power2.out', delay: 0.3 });
+      gsap.set('#zone-wrap', { opacity: 0 });
+      gsap.to('#zone-wrap', { opacity: 1, duration: 1.4, ease: 'power2.out', delay: 0.3, clearProps: 'opacity' });
       gsap.from('#zone-hint', { opacity: 0, duration: 1.4, delay: 0.7 });
     }
   });
