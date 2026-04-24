@@ -1,11 +1,14 @@
 {
   "version": 2,
   "builds": [
-    { "src": "trani-backend/server.js", "use": "@vercel/node" }
+    { "src": "trani-backend/server.js", "use": "@vercel/node" },
+    { "src": "*.html",            "use": "@vercel/static" },
+    { "src": "foto_elezione/**",  "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "trani-backend/server.js" },
     { "src": "/health",   "dest": "trani-backend/server.js" },
+    { "src": "/",         "dest": "/index.html" },
     { "src": "/(.*)",     "dest": "/$1" }
   ]
 }
