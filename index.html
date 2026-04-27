@@ -1502,7 +1502,7 @@ async function renderIdeasSection() {
             <span class="ic-zone">${esc(z.name||'')}</span>
           </div>
           ${idea.street ? `<div class="ic-street">${esc(idea.street)}</div>` : ''}
-          <div class="ic-text">${esc(idea.text)}</div>
+          <div class="ic-text">${esc(idea.text||'')}</div>
           <div class="ic-meta">
             <span class="ic-author">${esc(idea.name||'Anonimo')}</span>
             ${idea.created_at ? `<span class="ic-date">${timeAgo(idea.created_at)}</span>` : ''}
@@ -1510,10 +1510,13 @@ async function renderIdeasSection() {
         </div>`;
     }).join('');
 
-    gsap.from('.idea-card', { y: 30, opacity: 0, duration: 0.6, stagger: 0.05, ease: 'power3.out' });
-  } catch {
-    grid.innerHTML = '<p style="color:rgba(255,90,90,.6);padding:20px;font-size:13px;text-align:center">Errore di caricamento. Riprova.</p>';
-    console.error('renderIdeasSection: errore di rete');
+    try { gsap.from('.idea-card', { y: 30, opacity: 0, duration: 0.6, stagger: 0.05, ease: 'power3.out' }); } catch {}
+  } catch(err) {
+    console.error('renderIdeasSection:', err);
+    grid.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:40px 20px;text-align:center">
+      <p style="color:rgba(255,90,90,.65);font-size:13px;">Caricamento non riuscito. Controlla la connessione e riprova.</p>
+      <button onclick="renderIdeasSection()" style="padding:8px 22px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:transparent;color:rgba(255,255,255,.65);font-size:10px;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;font-family:inherit;">Riprova</button>
+    </div>`;
   }
 }
 
