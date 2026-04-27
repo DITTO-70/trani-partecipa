@@ -55,7 +55,7 @@ app.get('/api/stats', async (req, res) => {
     res.json({ stats: result.rows });
   } catch (err) {
     console.error('GET /api/stats:', err.message);
-    res.status(500).json({ error: 'Errore del server' });
+    res.json({ stats: [] });
   }
 });
 
@@ -90,7 +90,7 @@ app.get('/api/ideas', async (req, res) => {
     });
   } catch (err) {
     console.error('GET /api/ideas:', err.message);
-    res.status(500).json({ error: 'Errore del server' });
+    res.json({ ideas: [], total: 0 });
   }
 });
 
@@ -108,7 +108,7 @@ app.get('/api/ideas/all', async (req, res) => {
     res.json({ ideas: result.rows, total: result.rows.length });
   } catch (err) {
     console.error('GET /api/ideas/all:', err.message);
-    res.status(500).json({ error: 'Errore del server' });
+    res.json({ ideas: [], total: 0 });
   }
 });
 

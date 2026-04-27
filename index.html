@@ -1464,8 +1464,8 @@ async function renderIdeasSection() {
 
   try {
     const r = await fetch(`${API_URL}/api/ideas/all?limit=100`);
-    if (!r.ok) throw 0;
-    const { ideas } = await r.json();
+    const data = r.ok ? await r.json().catch(() => ({})) : {};
+    const ideas = Array.isArray(data.ideas) ? data.ideas : [];
 
     let list = ideas;
     if (isFilter !== 'all') {
@@ -1513,10 +1513,8 @@ async function renderIdeasSection() {
     try { gsap.from('.idea-card', { y: 30, opacity: 0, duration: 0.6, stagger: 0.05, ease: 'power3.out' }); } catch {}
   } catch(err) {
     console.error('renderIdeasSection:', err);
-    grid.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:40px 20px;text-align:center">
-      <p style="color:rgba(255,90,90,.65);font-size:13px;">Caricamento non riuscito. Controlla la connessione e riprova.</p>
-      <button onclick="renderIdeasSection()" style="padding:8px 22px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:transparent;color:rgba(255,255,255,.65);font-size:10px;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;font-family:inherit;">Riprova</button>
-    </div>`;
+    grid.style.display  = 'none';
+    empty.style.display = 'flex';
   }
 }
 
