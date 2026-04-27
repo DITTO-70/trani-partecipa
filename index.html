@@ -1231,12 +1231,17 @@ document.getElementById('pi-submit').addEventListener('click', async () => {
   const btn = document.getElementById('pi-submit');
   btn.disabled = true; btn.textContent = 'Invio…';
 
-  await submitIdea(activeIdx, name, txt, street, selectedType, selectedPhotoB64, selectedStreetUrl);
-
-  document.getElementById('pi-form').style.display = 'none';
-  document.getElementById('pi-ok').style.display   = 'flex';
-  btn.disabled = false; btn.textContent = 'Invia la tua idea';
-  setTimeout(() => closePanels(true), 2200);
+  try {
+    await submitIdea(activeIdx, name, txt, street, selectedType);
+    document.getElementById('pi-form').style.display = 'none';
+    document.getElementById('pi-ok').style.display   = 'flex';
+    setTimeout(() => closePanels(true), 2200);
+  } catch (err) {
+    errEl.textContent = err.message || "Errore durante l'invio. Riprova.";
+    console.error('submitIdea:', err);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Invia la tua idea';
+  }
 });
 
 /* ═══════════════════════════════════════════════════════════
@@ -1323,19 +1328,12 @@ function updateStreetPanel({ name, address, lat, lon }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   API LAYER — fetch + localStorage fallback
+   API LAYER — tutti i dati da Supabase via Express
    ═══════════════════════════════════════════════════════════ */
 const API_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
   ? 'http://localhost:3000' : '';
-const LS_KEY = 'trani_partecipa_v1';
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-function lsGet() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch { return []; } }
-function lsSave(zone, name, text, street, type, photo, streetUrl) {
-  const l = lsGet();
-  l.push({ zone, name:name||'Anonimo', text, street, streetUrl:streetUrl||null, type:type||'idea', photo:photo||null, ts:Date.now() });
-  localStorage.setItem(LS_KEY, JSON.stringify(l));
-}
 
 async function fetchZoneIdeas(zone, limit=3) {
   try {
@@ -1343,21 +1341,20 @@ async function fetchZoneIdeas(zone, limit=3) {
     if (!r.ok) throw 0;
     return await r.json();
   } catch {
-    const all = lsGet().filter(x => x.zone === zone).reverse().slice(0, limit);
-    return { ideas: all.map(x => ({ name:x.name, text:x.text })), total: all.length };
+    console.error('fetchZoneIdeas: errore di rete per zona', zone);
+    return { ideas: [], total: 0 };
   }
 }
 
-async function submitIdea(zone, name, text, street, type, photo, streetUrl) {
-  try {
-    const r = await fetch(`${API_URL}/api/ideas`, {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ zone, name, text, street, streetUrl, type, photo })
-    });
-    if (!r.ok) throw 0;
-  } catch {
-    lsSave(zone, name, text, street, type, photo, streetUrl);
+async function submitIdea(zone, name, text, street, type) {
+  const r = await fetch(`${API_URL}/api/ideas`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ zone, name, text, street, type })
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || "Errore durante l'invio");
   }
 }
 
@@ -1456,66 +1453,72 @@ document.querySelectorAll('.is-filter').forEach(f => {
   });
 });
 
-function renderIdeasSection() {
-  const all = lsGet();
-  let list = all;
-
-  if (isFilter !== 'all') {
-    const ci = +isFilter;
-    const zis = CATEGORIES[ci].zones;
-    list = all.filter(x => zis.includes(x.zone));
-  }
-
-  // Ordina dal più recente
-  list = [...list].sort((a,b) => (b.ts||0) - (a.ts||0));
-
-  const total = list.length;
-  document.getElementById('is-total').textContent = total > 0 ? `${total} idea${total !== 1 ? 'e' : ''}` : '';
-
+async function renderIdeasSection() {
   const grid  = document.getElementById('is-grid');
   const empty = document.getElementById('is-empty');
 
-  if (total === 0) {
-    grid.style.display  = 'none';
-    empty.style.display = 'flex';
-    return;
-  }
+  grid.style.display = '';
+  grid.innerHTML = '<p style="color:rgba(255,255,255,.3);padding:20px;font-size:13px;text-align:center">Caricamento...</p>';
   empty.style.display = 'none';
-  grid.style.display  = '';
+  document.getElementById('is-total').textContent = '';
 
-  grid.innerHTML = list.map(idea => {
-    const z   = ZONES[idea.zone]   || {};
-    const cat = CATEGORIES.find(c => c.zones.includes(idea.zone)) || {};
-    const isSeg = idea.type === 'segnalazione';
-    const typeStyle = isSeg
-      ? 'background:rgba(255,140,60,.12);border-color:rgba(255,140,60,.35);color:#f0a060;'
-      : 'background:rgba(201,169,110,.12);border-color:rgba(201,169,110,.35);color:var(--gold);';
-    const typeLabel = isSeg ? 'Segnalazione' : 'Idea';
-    return `
-      <div class="idea-card">
-        ${idea.photo ? `<img src="${idea.photo}" style="width:100%;border-radius:10px;max-height:140px;object-fit:cover;border:1px solid rgba(255,255,255,.1)" alt="foto">` : ''}
-        <div class="ic-tags">
-          <span style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;padding:3px 9px;border-radius:6px;border:1px solid;${typeStyle}">${typeLabel}</span>
-          <span class="ic-dot"></span>
-          <span class="ic-cat">${esc(cat.name||'')}</span>
-          <span class="ic-dot"></span>
-          <span class="ic-zone">${esc(z.name||'')}</span>
-        </div>
-        ${idea.street ? (idea.streetUrl
-          ? `<a class="ic-street" href="${idea.streetUrl}" target="_blank" rel="noopener" style="text-decoration:none;border-bottom:1px solid rgba(255,255,255,.18);transition:color .2s;color:rgba(255,255,255,.38);" onmouseover="this.style.color='rgba(255,255,255,.75)'" onmouseout="this.style.color='rgba(255,255,255,.38)'">${esc(idea.street)} ↗</a>`
-          : `<div class="ic-street">${esc(idea.street)}</div>`) : ''}
-        <div class="ic-text">${esc(idea.text)}</div>
-        <div class="ic-meta">
-          <span class="ic-author">${esc(idea.name||'Anonimo')}</span>
-          ${idea.ts ? `<span class="ic-date">${timeAgo(idea.ts)}</span>` : ''}
-        </div>
-      </div>`;
-  }).join('');
+  try {
+    const r = await fetch(`${API_URL}/api/ideas/all?limit=100`);
+    if (!r.ok) throw 0;
+    const { ideas } = await r.json();
 
-  gsap.from('.idea-card', { y: 30, opacity: 0, duration: 0.6, stagger: 0.05, ease: 'power3.out' });
+    let list = ideas;
+    if (isFilter !== 'all') {
+      const zis = CATEGORIES[+isFilter].zones;
+      list = ideas.filter(x => zis.includes(x.zone));
+    }
+
+    const total = list.length;
+    document.getElementById('is-total').textContent = total > 0 ? `${total} idea${total !== 1 ? 'e' : ''}` : '';
+
+    if (total === 0) {
+      grid.style.display  = 'none';
+      empty.style.display = 'flex';
+      return;
+    }
+    empty.style.display = 'none';
+    grid.style.display  = '';
+
+    grid.innerHTML = list.map(idea => {
+      const z   = ZONES[idea.zone]   || {};
+      const cat = CATEGORIES.find(c => c.zones.includes(idea.zone)) || {};
+      const isSeg = idea.type === 'segnalazione';
+      const typeStyle = isSeg
+        ? 'background:rgba(255,140,60,.12);border-color:rgba(255,140,60,.35);color:#f0a060;'
+        : 'background:rgba(201,169,110,.12);border-color:rgba(201,169,110,.35);color:var(--gold);';
+      const typeLabel = isSeg ? 'Segnalazione' : 'Idea';
+      return `
+        <div class="idea-card">
+          <div class="ic-tags">
+            <span style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;padding:3px 9px;border-radius:6px;border:1px solid;${typeStyle}">${typeLabel}</span>
+            <span class="ic-dot"></span>
+            <span class="ic-cat">${esc(cat.name||'')}</span>
+            <span class="ic-dot"></span>
+            <span class="ic-zone">${esc(z.name||'')}</span>
+          </div>
+          ${idea.street ? `<div class="ic-street">${esc(idea.street)}</div>` : ''}
+          <div class="ic-text">${esc(idea.text)}</div>
+          <div class="ic-meta">
+            <span class="ic-author">${esc(idea.name||'Anonimo')}</span>
+            ${idea.created_at ? `<span class="ic-date">${timeAgo(idea.created_at)}</span>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+
+    gsap.from('.idea-card', { y: 30, opacity: 0, duration: 0.6, stagger: 0.05, ease: 'power3.out' });
+  } catch {
+    grid.innerHTML = '<p style="color:rgba(255,90,90,.6);padding:20px;font-size:13px;text-align:center">Errore di caricamento. Riprova.</p>';
+    console.error('renderIdeasSection: errore di rete');
+  }
 }
 
-function timeAgo(ts) {
+function timeAgo(val) {
+  const ts = typeof val === 'number' ? val : new Date(val).getTime();
   const d = Date.now() - ts;
   const m = Math.floor(d/60000), h = Math.floor(d/3600000), g = Math.floor(d/86400000);
   if (m < 1)  return 'Adesso';
@@ -1594,12 +1597,12 @@ window.addEventListener('pageshow', function(e) {
 </div>
 
 <script>
-/* ── Admin (?admin) ──────────────────────────────────── */
+/* ── Admin (?admin) — autenticazione via API, nessuna credenziale nel frontend ── */
 (function(){
-  var AU='ditto', AP='matti0561', ADM_LS='trani_partecipa_v1', admFilter='all';
-  var CAT_ZONES={c0:[0,1,2],c1:[3,4],c2:[5,6]};
-  var ZONE_L=['Via Andria',"Sant'Angelo",'Via Superga','Stadio','Centro','Pozzopiano','Capirro'];
-  var CAT_L=['Trani Nord','Trani Nord','Trani Nord','Trani Centro','Trani Centro','Trani Sud','Trani Sud'];
+  var admFilter = 'all';
+  var CAT_ZONES = {c0:[0,1,2], c1:[3,4], c2:[5,6]};
+  var ZONE_L    = ['Via Andria',"Sant'Angelo",'Via Superga','Stadio','Centro','Pozzopiano','Capirro'];
+  var CAT_L     = ['Trani Nord','Trani Nord','Trani Nord','Trani Centro','Trani Centro','Trani Sud','Trani Sud'];
 
   if (!location.search.includes('admin')) return;
 
@@ -1608,89 +1611,143 @@ window.addEventListener('pageshow', function(e) {
   var elDash  = document.getElementById('adm-dash');
 
   elAdm.style.display = 'flex';
-  if (sessionStorage.getItem('adm_ok')==='1') showDash();
+  if (sessionStorage.getItem('adm_ok') === '1') showDash();
 
   document.getElementById('adm-go').addEventListener('click', tryLogin);
   document.getElementById('adm-pass').addEventListener('keydown', function(e){ if(e.key==='Enter') tryLogin(); });
 
-  function tryLogin(){
-    var u=document.getElementById('adm-user').value.trim();
-    var p=document.getElementById('adm-pass').value.trim();
-    if(u===AU && p===AP){
-      sessionStorage.setItem('adm_ok','1');
-      document.getElementById('adm-err').textContent='';
+  async function tryLogin(){
+    var u = document.getElementById('adm-user').value.trim();
+    var p = document.getElementById('adm-pass').value.trim();
+    if(!u || !p){ document.getElementById('adm-err').textContent = 'Compila tutti i campi.'; return; }
+
+    var btn = document.getElementById('adm-go');
+    btn.disabled = true; btn.textContent = 'Accesso...';
+    document.getElementById('adm-err').textContent = '';
+
+    var token = btoa(u + ':' + p);
+    try {
+      var r = await fetch(API_URL + '/api/admin/verify', {
+        method: 'POST',
+        headers: { 'x-admin-auth': token }
+      });
+      if(!r.ok) throw await r.json();
+      sessionStorage.setItem('adm_ok', '1');
+      sessionStorage.setItem('adm_token', token);
       showDash();
-    } else {
-      document.getElementById('adm-err').textContent='Credenziali errate.';
+    } catch(e) {
+      document.getElementById('adm-err').textContent = (e && e.error) || 'Credenziali errate.';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Accedi';
     }
   }
 
   function showDash(){
-    elLogin.style.display='none';
-    elDash.style.display='flex';
-    render();
+    elLogin.style.display = 'none';
+    elDash.style.display  = 'flex';
+    loadAndRender();
   }
 
   document.getElementById('adm-out-btn').addEventListener('click', function(){
     sessionStorage.removeItem('adm_ok');
-    elDash.style.display='none';
-    elLogin.style.display='flex';
-    document.getElementById('adm-user').value='';
-    document.getElementById('adm-pass').value='';
+    sessionStorage.removeItem('adm_token');
+    elDash.style.display  = 'none';
+    elLogin.style.display = 'flex';
+    document.getElementById('adm-user').value = '';
+    document.getElementById('adm-pass').value = '';
   });
 
   document.getElementById('adm-close-btn').addEventListener('click', function(){
     history.replaceState(null,'',location.pathname);
-    elAdm.style.display='none';
+    elAdm.style.display = 'none';
   });
 
   document.querySelectorAll('.adm-f').forEach(function(b){
     b.addEventListener('click', function(){
-      admFilter=b.dataset.af;
+      admFilter = b.dataset.af;
       document.querySelectorAll('.adm-f').forEach(function(x){ x.classList.remove('adm-fa'); });
       b.classList.add('adm-fa');
-      render();
+      if(window._admData) renderData(window._admData);
     });
   });
 
-  window.admDelete=function(idx){
-    var raw=JSON.parse(localStorage.getItem(ADM_LS)||'[]');
-    raw.splice(idx,1);
-    localStorage.setItem(ADM_LS,JSON.stringify(raw));
-    render();
+  window.admDelete = async function(id){
+    if(!confirm('Eliminare questa idea? L\'operazione non può essere annullata.')) return;
+    var token = sessionStorage.getItem('adm_token');
+    try {
+      var r = await fetch(API_URL + '/api/admin/ideas/' + id, {
+        method: 'DELETE',
+        headers: { 'x-admin-auth': token }
+      });
+      if(!r.ok) throw await r.json();
+      loadAndRender();
+    } catch(e) {
+      alert((e && e.error) || "Errore durante l'eliminazione");
+    }
   };
 
-  function render(){
-    var raw=JSON.parse(localStorage.getItem(ADM_LS)||'[]');
-    var all=raw.slice().reverse();
-    var list=all;
-    if(admFilter==='idea') list=all.filter(function(x){ return x.type!=='segnalazione'; });
-    else if(admFilter==='segnalazione') list=all.filter(function(x){ return x.type==='segnalazione'; });
-    else if(CAT_ZONES[admFilter]) list=all.filter(function(x){ return CAT_ZONES[admFilter].indexOf(x.zone)!==-1; });
+  async function loadAndRender(){
+    var token = sessionStorage.getItem('adm_token');
+    var grid  = document.getElementById('adm-grid');
+    var empty = document.getElementById('adm-empty');
 
-    var grid=document.getElementById('adm-grid');
-    var empty=document.getElementById('adm-empty');
-    document.getElementById('adm-stat').textContent=raw.length+(raw.length!==1?' idee':' idea');
+    grid.innerHTML = '<p style="color:rgba(255,255,255,.3);padding:20px;font-size:13px">Caricamento dal database...</p>';
+    grid.style.display = ''; empty.style.display = 'none';
 
-    if(!list.length){ grid.style.display='none'; empty.style.display='flex'; return; }
-    empty.style.display='none'; grid.style.display='';
+    try {
+      var r = await fetch(API_URL + '/api/admin/ideas', {
+        headers: { 'x-admin-auth': token }
+      });
+      if(!r.ok) {
+        if(r.status === 401) {
+          sessionStorage.removeItem('adm_ok');
+          sessionStorage.removeItem('adm_token');
+          elDash.style.display  = 'none';
+          elLogin.style.display = 'flex';
+          document.getElementById('adm-err').textContent = 'Sessione scaduta, accedi di nuovo.';
+          return;
+        }
+        throw await r.json();
+      }
+      var data = await r.json();
+      window._admData = data.ideas || [];
+      renderData(window._admData);
+    } catch(e) {
+      var msg = (e && e.error) || 'Caricamento fallito';
+      grid.innerHTML = '<p style="color:rgba(255,90,90,.7);padding:20px;font-size:13px">Errore: ' + esc(msg) + '</p>';
+      console.error('admin loadAndRender:', e);
+    }
+  }
 
-    grid.innerHTML=list.map(function(idea){
-      var origIdx=raw.findIndex(function(r){ return r.ts===idea.ts && r.text===idea.text; });
-      var isSeg=idea.type==='segnalazione';
-      var dateStr=idea.ts?new Date(idea.ts).toLocaleString('it-IT',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+  function renderData(ideas){
+    var list = ideas;
+    if(admFilter === 'idea')            list = ideas.filter(function(x){ return x.type !== 'segnalazione'; });
+    else if(admFilter === 'segnalazione') list = ideas.filter(function(x){ return x.type === 'segnalazione'; });
+    else if(CAT_ZONES[admFilter])       list = ideas.filter(function(x){ return CAT_ZONES[admFilter].indexOf(x.zone) !== -1; });
+
+    var grid  = document.getElementById('adm-grid');
+    var empty = document.getElementById('adm-empty');
+    document.getElementById('adm-stat').textContent = ideas.length + (ideas.length !== 1 ? ' idee' : ' idea');
+
+    if(!list.length){ grid.style.display = 'none'; empty.style.display = 'flex'; return; }
+    empty.style.display = 'none'; grid.style.display = '';
+
+    grid.innerHTML = list.map(function(idea){
+      var isSeg   = idea.type === 'segnalazione';
+      var dateStr = idea.created_at
+        ? new Date(idea.created_at).toLocaleString('it-IT',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})
+        : '—';
       return '<div class="adm-card">'
-        +'<div class="adm-ct">'
-        +'<span class="adm-badge '+(isSeg?'s':'i')+'">'+(isSeg?'Segnalazione':'Proposta')+'</span>'
-        +'<span class="adm-zone">'+(CAT_L[idea.zone]||'')+' · '+(ZONE_L[idea.zone]||'')+'</span>'
-        +'<span class="adm-date">'+dateStr+'</span>'
-        +'</div>'
-        +'<div class="adm-author">'+esc(idea.name||'Anonimo')+'</div>'
-        +(idea.street?'<div class="adm-street">📍 '+esc(idea.street)+'</div>':'')
-        +'<div class="adm-text">'+esc(idea.text)+'</div>'
-        +(idea.photo?'<img src="'+idea.photo+'" style="width:100%;border-radius:8px;max-height:110px;object-fit:cover;" alt="">':'')
-        +'<button class="adm-del" onclick="admDelete('+origIdx+')">Elimina</button>'
-        +'</div>';
+        + '<div class="adm-ct">'
+        + '<span class="adm-badge ' + (isSeg ? 's' : 'i') + '">' + (isSeg ? 'Segnalazione' : 'Proposta') + '</span>'
+        + '<span class="adm-zone">' + esc(CAT_L[idea.zone] || '') + ' · ' + esc(ZONE_L[idea.zone] || '') + '</span>'
+        + '<span class="adm-date">' + dateStr + '</span>'
+        + '</div>'
+        + '<div class="adm-author">' + esc(idea.name || 'Anonimo') + '</div>'
+        + (idea.street ? '<div class="adm-street">📍 ' + esc(idea.street) + '</div>' : '')
+        + '<div class="adm-text">' + esc(idea.text) + '</div>'
+        + '<button class="adm-del" onclick="admDelete(\'' + idea.id + '\')">Elimina</button>'
+        + '</div>';
     }).join('');
   }
 })();

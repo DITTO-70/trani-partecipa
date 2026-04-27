@@ -20,6 +20,7 @@ html,body{min-height:100vh;background:var(--bg);font-family:'Inter',sans-serif;c
 .field::placeholder{color:rgba(255,255,255,.22);font-style:italic}
 .btn-login{width:100%;padding:14px;background:var(--w);border:1px solid var(--w);border-radius:8px;color:var(--k);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:background .3s,color .3s}
 .btn-login:hover{background:transparent;color:var(--w)}
+.btn-login:disabled{opacity:.5;cursor:not-allowed}
 #err{font-size:11px;color:rgba(255,100,100,.9);text-align:center;min-height:15px}
 
 /* DASH */
@@ -34,6 +35,8 @@ html,body{min-height:100vh;background:var(--bg);font-family:'Inter',sans-serif;c
 .btn-sm{padding:7px 16px;background:transparent;border-radius:6px;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:all .25s}
 #btn-out{border:1px solid rgba(255,80,70,.35);color:rgba(255,110,100,.8)}
 #btn-out:hover{background:rgba(255,80,70,.15);border-color:rgba(255,80,70,.8);color:#fff}
+#btn-reload{border:1px solid var(--br);color:rgba(255,255,255,.5)}
+#btn-reload:hover{border-color:rgba(255,255,255,.4);color:#fff}
 #filters{display:flex;gap:6px;padding:14px 36px;border-bottom:1px solid var(--br);overflow-x:auto;scrollbar-width:none;flex-wrap:wrap}
 .f{padding:6px 14px;border-radius:6px;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.42);border:1px solid transparent;cursor:pointer;background:none;white-space:nowrap;transition:all .2s}
 .f:hover{background:rgba(255,255,255,.06);color:#fff;border-color:var(--br)}
@@ -56,6 +59,7 @@ html,body{min-height:100vh;background:var(--bg);font-family:'Inter',sans-serif;c
 .text{font-family:'Playfair Display',serif;font-style:italic;font-size:13px;line-height:1.6;color:rgba(255,255,255,.72);flex:1}
 .btn-del{align-self:flex-end;margin-top:4px;padding:6px 16px;border-radius:6px;cursor:pointer;background:transparent;border:1px solid rgba(255,80,70,.35);color:rgba(255,110,100,.75);font-size:9px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;transition:all .2s}
 .btn-del:hover{background:rgba(255,80,70,.15);border-color:rgba(255,80,70,.8);color:#fff}
+.btn-del:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:600px){#dh,#filters,#body{padding-left:16px;padding-right:16px}#grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -80,6 +84,7 @@ html,body{min-height:100vh;background:var(--bg);font-family:'Inter',sans-serif;c
     </div>
     <div class="dh-r">
       <span id="stat">0 idee</span>
+      <button class="btn-sm" id="btn-reload">Aggiorna</button>
       <button class="btn-sm" id="btn-out">Esci</button>
     </div>
   </div>
@@ -95,107 +100,164 @@ html,body{min-height:100vh;background:var(--bg);font-family:'Inter',sans-serif;c
     <div id="grid"></div>
     <div id="empty">
       <p>Nessuna idea presente.</p>
-      <small>Assicurati di aprire questa pagina dallo stesso server usato per il sito principale.</small>
+      <small>Le idee inviate dagli utenti appariranno qui.</small>
     </div>
   </div>
 </div>
 
 <script>
-var KEY  = 'trani_partecipa_v1';
-var AU   = 'ditto', AP = 'matti0561';
-var fil  = 'all';
-var CZ   = {c0:[0,1,2], c1:[3,4], c2:[5,6]};
-var ZN   = ['Via Andria',"Sant'Angelo",'Via Superga','Stadio','Centro','Pozzopiano','Capirro'];
-var CN   = ['Trani Nord','Trani Nord','Trani Nord','Trani Centro','Trani Centro','Trani Sud','Trani Sud'];
+var API_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? 'http://localhost:3000' : '';
+
+var fil = 'all';
+var CZ  = {c0:[0,1,2], c1:[3,4], c2:[5,6]};
+var ZN  = ['Via Andria',"Sant'Angelo",'Via Superga','Stadio','Centro','Pozzopiano','Capirro'];
+var CN  = ['Trani Nord','Trani Nord','Trani Nord','Trani Centro','Trani Centro','Trani Sud','Trani Sud'];
 
 function esc(s){ var d=document.createElement('div'); d.textContent=String(s||''); return d.innerHTML; }
-function getData(){ try{ return JSON.parse(localStorage.getItem(KEY)||'[]'); }catch(e){ return []; } }
-function saveData(d){ localStorage.setItem(KEY, JSON.stringify(d)); }
+function getToken(){ return sessionStorage.getItem('adm_token') || ''; }
 
-/* LOGIN */
-if(sessionStorage.getItem('adm')==='1') showDash();
+/* ── LOGIN ── */
+if(sessionStorage.getItem('adm_ok')==='1') showDash();
 
 document.getElementById('btn-in').addEventListener('click', login);
 document.getElementById('p').addEventListener('keydown', function(e){ if(e.key==='Enter') login(); });
 
-function login(){
-  var u=document.getElementById('u').value.trim();
-  var p=document.getElementById('p').value.trim();
-  if(u===AU && p===AP){
-    sessionStorage.setItem('adm','1');
-    document.getElementById('err').textContent='';
+async function login(){
+  var u = document.getElementById('u').value.trim();
+  var p = document.getElementById('p').value.trim();
+  if(!u || !p){ document.getElementById('err').textContent='Compila tutti i campi.'; return; }
+
+  var btn = document.getElementById('btn-in');
+  btn.disabled = true; btn.textContent = 'Accesso...';
+  document.getElementById('err').textContent = '';
+
+  var token = btoa(u + ':' + p);
+  try {
+    var r = await fetch(API_URL + '/api/admin/verify', {
+      method: 'POST',
+      headers: { 'x-admin-auth': token }
+    });
+    if (!r.ok) throw await r.json();
+    sessionStorage.setItem('adm_ok', '1');
+    sessionStorage.setItem('adm_token', token);
     showDash();
-  } else {
-    document.getElementById('err').textContent='Credenziali errate.';
+  } catch(e) {
+    document.getElementById('err').textContent = (e && e.error) || 'Credenziali errate.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Accedi';
   }
 }
 
 function showDash(){
-  document.getElementById('login').style.display='none';
-  document.getElementById('dash').style.display='flex';
-  render();
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('dash').style.display  = 'flex';
+  loadAndRender();
 }
 
 document.getElementById('btn-out').addEventListener('click', function(){
-  sessionStorage.removeItem('adm');
-  document.getElementById('dash').style.display='none';
-  document.getElementById('login').style.display='flex';
-  document.getElementById('u').value='';
-  document.getElementById('p').value='';
+  sessionStorage.removeItem('adm_ok');
+  sessionStorage.removeItem('adm_token');
+  document.getElementById('dash').style.display  = 'none';
+  document.getElementById('login').style.display = 'flex';
+  document.getElementById('u').value = '';
+  document.getElementById('p').value = '';
 });
 
-/* FILTERS */
+document.getElementById('btn-reload').addEventListener('click', loadAndRender);
+
+/* ── FILTRI ── */
 document.querySelectorAll('.f').forEach(function(b){
   b.addEventListener('click', function(){
-    fil=b.dataset.f;
+    fil = b.dataset.f;
     document.querySelectorAll('.f').forEach(function(x){ x.classList.remove('on'); });
     b.classList.add('on');
-    render();
+    if(window._admData) renderData(window._admData);
   });
 });
 
-/* DELETE */
-window.del=function(idx){
-  var d=getData();
-  d.splice(idx,1);
-  saveData(d);
-  render();
+/* ── DELETE ── */
+window.del = async function(id){
+  if(!confirm('Eliminare questa idea? L\'operazione non può essere annullata.')) return;
+  var token = getToken();
+  try {
+    var r = await fetch(API_URL + '/api/admin/ideas/' + id, {
+      method: 'DELETE',
+      headers: { 'x-admin-auth': token }
+    });
+    if(!r.ok) throw await r.json();
+    loadAndRender();
+  } catch(e) {
+    alert((e && e.error) || "Errore durante l'eliminazione");
+  }
 };
 
-/* RENDER */
-function render(){
-  var raw=getData();
-  var all=raw.slice().reverse();
-  var list=all;
+/* ── CARICA DAL SERVER ── */
+async function loadAndRender(){
+  var token = getToken();
+  var grid  = document.getElementById('grid');
+  var empty = document.getElementById('empty');
 
-  if(fil==='idea')          list=all.filter(function(x){ return x.type!=='segnalazione'; });
-  else if(fil==='segnalazione') list=all.filter(function(x){ return x.type==='segnalazione'; });
-  else if(CZ[fil])          list=all.filter(function(x){ return CZ[fil].indexOf(x.zone)!==-1; });
+  grid.innerHTML = '<p style="color:rgba(255,255,255,.3);padding:20px;font-size:13px">Caricamento dal database...</p>';
+  grid.style.display = ''; empty.style.display = 'none';
 
-  document.getElementById('stat').textContent=raw.length+(raw.length===1?' idea':' idee');
+  try {
+    var r = await fetch(API_URL + '/api/admin/ideas', {
+      headers: { 'x-admin-auth': token }
+    });
+    if(!r.ok) {
+      if(r.status === 401) {
+        sessionStorage.removeItem('adm_ok');
+        sessionStorage.removeItem('adm_token');
+        document.getElementById('dash').style.display  = 'none';
+        document.getElementById('login').style.display = 'flex';
+        document.getElementById('err').textContent = 'Sessione scaduta, accedi di nuovo.';
+        return;
+      }
+      throw await r.json();
+    }
+    var data = await r.json();
+    window._admData = data.ideas || [];
+    renderData(window._admData);
+  } catch(e) {
+    var msg = (e && e.error) || 'Caricamento fallito. Verifica la connessione.';
+    grid.innerHTML = '<p style="color:rgba(255,90,90,.7);padding:20px;font-size:13px">Errore: ' + esc(msg) + '</p>';
+    console.error('loadAndRender:', e);
+  }
+}
 
-  var grid =document.getElementById('grid');
-  var empty=document.getElementById('empty');
+/* ── RENDER ── */
+function renderData(ideas){
+  var list = ideas;
+  if(fil === 'idea')           list = ideas.filter(function(x){ return x.type !== 'segnalazione'; });
+  else if(fil === 'segnalazione') list = ideas.filter(function(x){ return x.type === 'segnalazione'; });
+  else if(CZ[fil])             list = ideas.filter(function(x){ return CZ[fil].indexOf(x.zone) !== -1; });
 
-  if(!list.length){ grid.style.display='none'; empty.style.display='flex'; return; }
-  empty.style.display='none'; grid.style.display='';
+  document.getElementById('stat').textContent = ideas.length + (ideas.length === 1 ? ' idea' : ' idee');
 
-  grid.innerHTML=list.map(function(idea){
-    var oi=raw.findIndex(function(r){ return r.ts===idea.ts && r.text===idea.text; });
-    var seg=idea.type==='segnalazione';
-    var dt=idea.ts?new Date(idea.ts).toLocaleString('it-IT',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+  var grid  = document.getElementById('grid');
+  var empty = document.getElementById('empty');
+
+  if(!list.length){ grid.style.display = 'none'; empty.style.display = 'flex'; return; }
+  empty.style.display = 'none'; grid.style.display = '';
+
+  grid.innerHTML = list.map(function(idea){
+    var seg = idea.type === 'segnalazione';
+    var dt  = idea.created_at
+      ? new Date(idea.created_at).toLocaleString('it-IT', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'})
+      : '—';
+    var catName = idea.zone_name ? CN[idea.zone] || '' : '';
     return '<div class="card">'
-      +'<div class="ct">'
-      +'<span class="badge '+(seg?'s':'i')+'">'+(seg?'Segnalazione':'Proposta')+'</span>'
-      +'<span class="zone">'+(CN[idea.zone]||'')+' · '+(ZN[idea.zone]||'')+'</span>'
-      +'<span class="date">'+dt+'</span>'
-      +'</div>'
-      +'<div class="author">'+esc(idea.name||'Anonimo')+'</div>'
-      +(idea.street?'<div class="street">📍 '+esc(idea.street)+'</div>':'')
-      +'<div class="text">'+esc(idea.text)+'</div>'
-      +(idea.photo?'<img src="'+idea.photo+'" style="width:100%;border-radius:8px;max-height:110px;object-fit:cover" alt="">':'')
-      +'<button class="btn-del" onclick="del('+oi+')">Elimina</button>'
-      +'</div>';
+      + '<div class="ct">'
+      + '<span class="badge ' + (seg ? 's' : 'i') + '">' + (seg ? 'Segnalazione' : 'Proposta') + '</span>'
+      + '<span class="zone">' + esc(catName) + (catName ? ' · ' : '') + esc(idea.zone_name || ZN[idea.zone] || '') + '</span>'
+      + '<span class="date">' + dt + '</span>'
+      + '</div>'
+      + '<div class="author">' + esc(idea.name || 'Anonimo') + '</div>'
+      + (idea.street ? '<div class="street">📍 ' + esc(idea.street) + '</div>' : '')
+      + '<div class="text">' + esc(idea.text) + '</div>'
+      + '<button class="btn-del" onclick="del(\'' + esc(idea.id) + '\')">Elimina</button>'
+      + '</div>';
   }).join('');
 }
 </script>
